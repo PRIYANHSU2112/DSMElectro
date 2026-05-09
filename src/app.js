@@ -35,6 +35,7 @@ import addressRoutes from "./routes/address.routes.js";
 import invoiceRoutes from "./routes/invoice.routes.js";
 import homeRoutes from "./routes/home.routes.js";
 import bannerRoutes from "./routes/banner.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.use("/api/v1", addressRoutes);
 app.use("/api/v1", invoiceRoutes);
 app.use("/api/v1", homeRoutes);
 app.use("/api/v1/banners", bannerRoutes);
+app.use("/api/v1", dashboardRoutes);
 app.use(errorHandler);
 
 export default app;
