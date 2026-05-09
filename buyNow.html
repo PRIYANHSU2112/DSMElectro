@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Buy Now Razorpay Test</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body style="font-family: Arial; padding: 20px;">
+
+  <h2>Buy Now Test</h2>
+
+  <button onclick="payNow()" style="padding: 10px 20px; cursor: pointer;">
+    Buy Now
+  </button>
+
+  <pre id="logBox" style="margin-top:20px; background:#f4f4f4; padding:15px; border-radius:8px;"></pre>
+
+<script>
+  // 🔥 HARD CODED VALUES (CHANGE THESE ONLY)
+  const API_BASE = "http://localhost:5000/api/v1";   // 👈 your backend
+  const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5YmU2Mzk5ZmFkNjdjNWJjMzhjODhhOSIsImlhdCI6MTc3NjA4MDU4MCwiZXhwIjoxNzgxMjY0NTgwfQ.TKKQOLimNjkbawRD8C-XCcEAxf7hawCv3BGjVaqDdes";      // 🔐 JWT token
+  const VARIANT_ID = "69c77f35278095a2c660f1cd";      // 📦 variantId
+  const QUANTITY = 1;                         // 🔢 quantity
+  const PAYMENT_METHOD = "ONLINE";            // COD / ONLINE / WALLET
+
+  const ADDRESS = {
+    street: "Test Street",
+    city: "665abc111111111111111111"
+  };
+
+  function log(msg, data = null) {
+    const logBox = document.getElementById("logBox");
+    const text = data ? `${msg}\n${JSON.stringify(data, null, 2)}\n\n` : `${msg}\n\n`;
+    console.log(msg, data || "");
+    logBox.textContent += text;
+  }
+
+  async function payNow() {
+    try {
+      log("🔄 Creating Buy Now Order...");
+
+      // ✅ 1) CREATE ORDER
+      const createUrl = `${API_BASE}/buy-now`;
+      log("📌 Create Order URL:", createUrl);
+
+      const res = await fetch(createUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${TOKEN}`
+        },
+        body: JSON.stringify({
+          variantId: VARIANT_ID,
+          quantity: QUANTITY,
+          paymentMethod: PAYMENT_METHOD,
+          address: ADDRESS
+        })
+      });
+
+      const data = await res.json();
+      log("✅ Create Order Response:", data);
+
+      if (!data.success) {
+        alert("❌ Order Failed: " + data.message);
+        return;
+      }
+
+      const result = data.data;
+
+      // ✅ COD / WALLET
+      if (PAYMENT_METHOD !== "ONLINE") {
+        alert("✅ Order placed successfully!");
+        return;
+      }
+
+      // ✅ 2) RAZORPAY OPTIONS
+      const options = {
+        key: result.razorpayKey,
+        order_id: result.razorpayOrderId,
+        amount: result.order.orderTotal * 100,
+        currency: "INR",
+
+        name: "Buy Now Order",
+        description: "Product Purchase",
+
+        prefill: {
+          name: "Test User",
+          email: "test@gmail.com",
+          contact: "9999999999"
+        },
+
+        handler: async function (response) {
+          try {
+            log("💰 Payment Success:", response);
+
+            // ✅ 3) VERIFY PAYMENT
+            const verifyUrl = `${API_BASE}/buy-now/verify-payment`;
+            log("📌 Verify URL:", verifyUrl);
+
+            const verifyRes = await fetch(verifyUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${TOKEN}`
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                orderId: result.order._id
+              })
+            });
+
+            const verifyData = await verifyRes.json();
+            log("✅ Verify Response:", verifyData);
+
+            if (verifyData.success) {
+              alert("✅ Payment successful & order confirmed!");
+            } else {
+              alert("❌ Verify Failed: " + verifyData.message);
+            }
+
+          } catch (err) {
+            log("❌ Verify Error:", err.message);
+            alert("❌ Verify API Failed");
+          }
+        },
+
+        modal: {
+          ondismiss: function () {
+            log("⚠️ Payment popup closed");
+          }
+        },
+
+        theme: { color: "#528FF0" }
+      };
+
+      const rzp = new Razorpay(options);
+
+      rzp.on("payment.failed", function (response) {
+        log("❌ Payment Failed:", response.error);
+        alert("❌ Payment Failed: " + response.error.description);
+      });
+
+      rzp.open();
+
+    } catch (err) {
+      log("❌ Error:", err.message);
+      alert("❌ Backend error or not reachable");
+    }
+  }
+</script>
+
+</body>
+</html>

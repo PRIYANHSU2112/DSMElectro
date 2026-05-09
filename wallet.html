@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Wallet Topup Razorpay Test</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body style="font-family: Arial; padding: 20px;">
+
+  <h2>Wallet Top-up Test</h2>
+
+  <button onclick="payNow()" style="padding: 10px 20px; cursor: pointer;">
+    Add Money (UPI)
+  </button>
+
+  <pre id="logBox" style="margin-top:20px; background:#f4f4f4; padding:15px; border-radius:8px;"></pre>
+
+<script>
+  // 🔥 HARD CODED VALUES
+  const API_BASE = "http://localhost:5000/api/v1";
+  const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5Y2I1MzMyZmYxN2E2ZDhjODMzYWZmOCIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc3NjA2NzEwNywiZXhwIjoxNzgxMjUxMTA3fQ.3jfBzYJx063d2IFU7gpoCqPsSfjj-zqH_J2EPLah9EU"; // 🔐 replace
+  const AMOUNT = 500; // 💰 fixed amount
+
+  function log(msg, data = null) {
+    const logBox = document.getElementById("logBox");
+    const text = data ? `${msg}\n${JSON.stringify(data, null, 2)}\n\n` : `${msg}\n\n`;
+    console.log(msg, data || "");
+    logBox.textContent += text;
+  }
+
+  async function payNow() {
+    try {
+      log("🔄 Creating Wallet Topup Order...");
+
+      // ✅ 1) CREATE ORDER
+      const createUrl = `${API_BASE}/wallet/topup/create-order`;
+      log("📌 Create Order URL:", createUrl);
+
+      const res = await fetch(createUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${TOKEN}`
+        },
+        body: JSON.stringify({
+          amount: AMOUNT
+        })
+      });
+
+      const data = await res.json();
+      log("✅ Create Order Response:", data);
+
+      if (!data.success) {
+        alert("❌ Failed: " + data.message);
+        return;
+      }
+
+      const result = data.data;
+
+      // ✅ 2) RAZORPAY OPTIONS (UPI PRIORITY)
+      const options = {
+        key: result.razorpayKey,
+        order_id: result.razorpayOrderId,
+        amount: result.amount * 100,
+        currency: "INR",
+
+        name: "Wallet Top-up",
+        description: "Add money to wallet",
+
+        // ✅ UPI ONLY (like you wanted)
+        method: {
+          upi: true,
+          card: false,
+          netbanking: false,
+          wallet: false
+        },
+
+        prefill: {
+          name: "Test User",
+          email: "test@gmail.com",
+          contact: "9999999999"
+        },
+
+        handler: async function (response) {
+          try {
+            log("💰 Payment Success:", response);
+
+            // ✅ 3) VERIFY PAYMENT
+            const verifyUrl = `${API_BASE}/wallet/topup/verify`;
+            log("📌 Verify URL:", verifyUrl);
+
+            const verifyRes = await fetch(verifyUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${TOKEN}`
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature
+              })
+            });
+
+            const verifyData = await verifyRes.json();
+            log("✅ Verify Response:", verifyData);
+
+            if (verifyData.success) {
+              alert("✅ Wallet credited successfully!");
+            } else {
+              alert("❌ Verify Failed: " + verifyData.message);
+            }
+
+          } catch (err) {
+            log("❌ Verify Error:", err.message);
+            alert("❌ Verify API Failed");
+          }
+        },
+
+        modal: {
+          ondismiss: function () {
+            log("⚠️ Payment popup closed");
+          }
+        },
+
+        theme: { color: "#2ecc71" }
+      };
+
+      const rzp = new Razorpay(options);
+
+      rzp.on("payment.failed", function (response) {
+        log("❌ Payment Failed:", response.error);
+        alert("❌ Payment Failed: " + response.error.description);
+      });
+
+      rzp.open();
+
+    } catch (err) {
+      log("❌ Error:", err.message);
+      alert("❌ Backend error");
+    }
+  }
+</script>
+
+</body>
+</html>

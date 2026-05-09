@@ -1,0 +1,44 @@
+import mongoose from "mongoose"; // Sanvi
+
+const pincodeSchema = new mongoose.Schema(
+  {
+    code: { 
+      type: String, 
+      required: true, 
+      trim: true,
+      index: true 
+    },
+
+    cityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "City",
+      required: true,
+      index: true,
+    },
+
+    stateId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "State",
+      required: true,
+      index: true,
+    },
+
+    countryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Country",
+      required: true,
+      index: true,
+    },
+
+    disable: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+  },
+  { timestamps: true },
+);
+
+pincodeSchema.index({ code: 1, cityId: 1 }, { unique: true });
+
+export default mongoose.model("Pincode", pincodeSchema);
