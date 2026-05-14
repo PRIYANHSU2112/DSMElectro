@@ -41,4 +41,12 @@ export default class InvoiceController {
       }, "Invoices fetched"];
     });
   }
+
+  static async updateInvoice(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { id } = req.params;
+      const invoice = await InvoiceService.updateInvoice(id, req.body);
+      return [{ data: invoice }, "Invoice updated successfully"];
+    });
+  }
 }

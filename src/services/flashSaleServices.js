@@ -12,16 +12,22 @@ export default class FlashSaleService {
 
     const sale = await flashSaleModel.create(payload);
 
-    // PRODUCT
+    // PRODUCT - Check for existing flash sale
     if (productIds.length) {
+      const alreadyInSale = await productModel.findOne({ _id: { $in: productIds }, flashSale: true });
+      if (alreadyInSale) throw new AppError(`Product ${alreadyInSale.name || alreadyInSale._id} is already in another active flash sale`, 400);
+
       await productModel.updateMany(
         { _id: { $in: productIds } },
         { flashSale: true }
       );
     }
 
-    // VARIANT
+    // VARIANT - Check for existing flash sale
     if (variantIds.length) {
+      const alreadyInSale = await variantModel.findOne({ _id: { $in: variantIds }, flashSale: true });
+      if (alreadyInSale) throw new AppError("One or more variants are already in another active flash sale", 400);
+
       await variantModel.updateMany(
         { _id: { $in: variantIds } },
         { flashSale: true }
@@ -72,5 +78,66 @@ export default class FlashSaleService {
       .populate("products")
       .populate("variants")
       .populate("combos");
+  }
+
+  static async addItems(saleId, payload) {
+    const { products = [], variants = [], combos = [] } = payload;
+    const sale = await flashSaleModel.findById(saleId);
+    if (!sale) throw new AppError("Flash sale not found", 404);
+
+    const existingProducts = sale.products.map((p) => p.toString());
+    const existingVariants = sale.variants.map((v) => v.toString());
+    const existingCombos = sale.combos.map((c) => c.toString());
+
+    // Filter out duplicates
+    const newProducts = products.filter((id) => !existingProducts.includes(id));
+    const newVariants = variants.filter((id) => !existingVariants.includes(id));
+    const newCombos = combos.filter((id) => !existingCombos.includes(id));
+
+    if (newProducts.length) {
+      const alreadyInSale = await productModel.findOne({ _id: { $in: newProducts }, flashSale: true });
+      if (alreadyInSale) throw new AppError(`Product ${alreadyInSale.name || alreadyInSale._id} is already in another active flash sale`, 400);
+
+      sale.products.push(...newProducts);
+      await productModel.updateMany({ _id: { $in: newProducts } }, { flashSale: true });
+    }
+
+    if (newVariants.length) {
+      const alreadyInSale = await variantModel.findOne({ _id: { $in: newVariants }, flashSale: true });
+      if (alreadyInSale) throw new AppError("One or more variants are already in another active flash sale", 400);
+
+      sale.variants.push(...newVariants);
+      await variantModel.updateMany({ _id: { $in: newVariants } }, { flashSale: true });
+    }
+
+    if (newCombos.length) {
+      const alreadyInSale = await comboModel.findOne({ _id: { $in: newCombos }, flashSale: true });
+      if (alreadyInSale) throw new AppError("One or more combos are already in another active flash sale", 400);
+
+      sale.combos.push(...newCombos);
+      const combosData = await comboModel.find({ _id: { $in: newCombos } });
+      const comboOps = combosData.map((c) => {
+        let discountAmount =
+          sale.discountType === "percentage"
+            ? (c.totalMrp * sale.discountValue) / 100
+            : sale.discountValue;
+
+        return {
+          updateOne: {
+            filter: { _id: c._id },
+            update: {
+              flashSale: true,
+              discount: sale.discountValue,
+              discountAmount,
+              comboPrice: c.totalMrp - discountAmount,
+            },
+          },
+        };
+      });
+      if (comboOps.length) await comboModel.bulkWrite(comboOps);
+    }
+
+    await sale.save();
+    return sale;
   }
 }

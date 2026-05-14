@@ -8,9 +8,11 @@ import "./src/utils/cron.js";
 import { connectRedis } from "./src/config/redis.js"; 
 import {Server} from "socket.io";
 import { ChatSocket } from "./src/Socket/chat.socket.js";
+import { seedRoles } from "./src/utils/seeder.js";
 
 const startServer = async () => {
   await DB();
+  await seedRoles();
   try {
     await connectRedis();
   } catch (error) {

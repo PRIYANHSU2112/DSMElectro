@@ -46,4 +46,11 @@ export default class FlashSaleController {
       return [{ data: result }, "Flash sale deactivated"];
     });
   }
+
+  static async addItems(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await FlashSaleService.addItems(req.params.id, req.body);
+      return [{ data: result }, "Items added to flash sale successfully"];
+    });
+  }
 }

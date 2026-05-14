@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { errorHandler } from "./middlewares/errorMiddlewares.js";
 import authRoutes from "./routes/auth.routes.js";
+import { optionalAuth, globalPermissionGuard } from "./middlewares/authMiddleware.js";
 import categoryRoutes from "./routes/category.routes.js";
 import subCategoryRoutes from "./routes/subCategory.routes.js";
 import countryRoutes from "./routes/country.route.js";
@@ -39,6 +40,7 @@ import brandRoutes from "./routes/brand.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import searchRoutes from "./routes/search.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
+import roleRoutes from "./routes/role.routes.js";
 
 const app = express();
 
@@ -56,6 +58,10 @@ app.use(cors(
 app.get("/", (req, res) => {
   res.send("API Running");
 });
+
+
+app.use("/api/v1", optionalAuth);
+app.use("/api/v1", globalPermissionGuard);
 
 app.use("/api/v1", searchRoutes);
 app.use("/api/v1/auth", authRoutes);
@@ -95,6 +101,7 @@ app.use("/api/v1/banners", bannerRoutes);
 app.use("/api/v1", brandRoutes);
 app.use("/api/v1", dashboardRoutes);
 app.use("/api/v1", ticketRoutes);
+app.use("/api/v1", roleRoutes);
 app.use(errorHandler);
 
 export default app;

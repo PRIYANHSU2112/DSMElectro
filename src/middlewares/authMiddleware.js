@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import userModel from "../model/user.model.js";
 import { AppError } from "../utils/apiResponse.js";
 import  dotenv  from 'dotenv'
+import { PERMISSION_MAP } from "../config/permissionMap.js";
 dotenv.config()
 const JWT_SECRET = process.env.HASH_KEY || "secret123";
 
@@ -23,7 +24,7 @@ export const authUser = async (req, res, next) => {
 
     // Optimize DB query by using lean() if possible, but let's just select only what's typically needed or exclude sensitive info.
     // Exclude password and otp.
-    const user = await userModel.findById(decoded.id).select("-otp -password");
+    const user = await userModel.findById(decoded.id).select("-otp -password").populate("role");
 
     if (!user) {
       return next(new AppError("User not found", 404));
@@ -51,7 +52,7 @@ export const adminMiddleware = (req, res, next) => {
       return next(new AppError("Not authorized", 401));
     }
 
-    if (req.user.role !== "ADMIN") {
+    if (req.user.role?.name !== "Super Admin") {
       return next(new AppError("Admin access required", 403));
     }
 
@@ -77,7 +78,7 @@ export const optionalAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    const user = await userModel.findById(decoded.id).select("-otp -password");
+    const user = await userModel.findById(decoded.id).select("-otp -password").populate("role");
 
     if (!user || user.disable) {
       return next();
@@ -88,5 +89,62 @@ export const optionalAuth = async (req, res, next) => {
     next();
   } catch (error) {
     next();
+  }
+};
+
+// PERMISSION MIDDLEWARE  for routes handele paermission
+export const hasPermission = (permissionName) => {
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        return next(new AppError("Not authorized", 401));
+      }
+
+      // Super Admin has all permissions
+      if (req.user.role?.name === "Super Admin") {
+        return next();
+      }
+
+      const userPermissions = req.user.role?.permissions || [];
+
+      if (!userPermissions.includes(permissionName)) {
+        return next(new AppError("You do not have permission to perform this action", 403));
+      }
+
+      next();
+    } catch (error) {
+      return next(new AppError("Permission check failed", 500));
+    }
+  };
+};
+
+
+// GLOBAL PERMISSION GUARD globaly used for permission check in routes
+export const globalPermissionGuard = (req, res, next) => {
+  try {
+    const method = req.method;
+    const url = req.baseUrl + req.path;
+
+    // Find a matching pattern in PERMISSION_MAP
+    let requiredPermission = null;
+    
+    for (const pattern in PERMISSION_MAP) {
+      const regexPattern = pattern.replace(/:[^\/]+/g, "[^/]+").replace(/\//g, "\\/");
+      const regex = new RegExp(`^${regexPattern}$`);
+      
+      if (regex.test(url)) {
+        requiredPermission = PERMISSION_MAP[pattern][method];
+        if (requiredPermission) break;
+      }
+    }
+
+    // If this route requires a permission, enforce it
+    if (requiredPermission) {
+      return hasPermission(requiredPermission)(req, res, next);
+    }
+
+    next();
+  } catch (error) {
+    next(new AppError("Permission check failed", 500));
   }
 };

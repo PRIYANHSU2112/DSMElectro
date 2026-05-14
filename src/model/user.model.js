@@ -36,9 +36,8 @@ const userSchema = new mongoose.Schema(
     },
 
     role: {
-      type: String,
-      enum: ["USER", "ADMIN", "AFFILIATE"],
-      default: "USER",
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Role",
     },
 
     otp: {

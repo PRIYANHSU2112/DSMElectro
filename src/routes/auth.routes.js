@@ -25,6 +25,7 @@ router.patch(
 );
 
 router.post("/admin/registerLogin", AuthController.adminLoginRegister);
+router.post("/admin/create", authUser, adminMiddleware, AuthController.createAdmin);
 
 // GET ALL USERS
 router.get("/users", authUser, adminMiddleware, AuthController.getAllUsers);

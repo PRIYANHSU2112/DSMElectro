@@ -30,7 +30,14 @@ router.patch(
   "/flash-sale/:id/deactivate",
   authUser,
   adminMiddleware,
-  FlashSaleController.deactivate, // (optional)
+  FlashSaleController.deactivate,
+);
+
+router.patch(
+  "/flash-sale/:id/add-items",
+  authUser,
+  adminMiddleware,
+  FlashSaleController.addItems,
 );
 
 //  Public route

@@ -370,10 +370,16 @@ export default class InvoiceService {
     const totalTax = parseFloat(((subtotal * GST_RATE) / 100).toFixed(2));
     return {
       subtotal, totalDiscount, totalTax, grandTotal: order.orderTotal,
-      taxBreakdown: [
-        { name: `CGST @ ${CGST_RATE}%`, rate: CGST_RATE, amount: parseFloat((totalTax / 2).toFixed(2)) },
-        { name: `SGST @ ${SGST_RATE}%`, rate: SGST_RATE, amount: parseFloat((totalTax / 2).toFixed(2)) },
-      ],
     };
+  }
+
+  static async updateInvoice(invoiceId, payload) {
+    const invoice = await Invoice.findByIdAndUpdate(
+      invoiceId,
+      { $set: payload },
+      { new: true }
+    );
+    if (!invoice) throw new AppError("Invoice not found", 404);
+    return invoice;
   }
 }

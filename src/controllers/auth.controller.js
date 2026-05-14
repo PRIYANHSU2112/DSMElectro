@@ -35,12 +35,14 @@ export default class AuthController {
         user.fcmToken = fcmToken || user.fcmToken;
         await user.save();
       } else {
+        const userRole = await mongoose.model("Role").findOne({ name: "User" });
         user = await userModel.create({
           firstName,
           lastName,
           email,
           number,
           fcmToken,
+          role: userRole?._id,
           otp: {
             code: otp,
             expiresAt: expiry,
@@ -170,6 +172,18 @@ export default class AuthController {
           : "Admin login successful",
         result.isNew ? 201 : 200,
       ];
+    });
+  }
+
+  // CREATE ADMIN
+  static async createAdmin(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { fullName, email, phone, role } = req.body;
+      if (!fullName || !email || !phone || !role) {
+        throw new ValidationError("Full name, email, phone, and role are required");
+      }
+      const admin = await AuthService.createAdminUser(req.body);
+      return [{ data: admin }, "Admin created successfully", 201];
     });
   }
 
