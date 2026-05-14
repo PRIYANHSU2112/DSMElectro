@@ -35,6 +35,7 @@ const subCategorySchema = new mongoose.Schema(
 );
 
 subCategorySchema.index({ title: 1, category: 1 }, { unique: true });
+subCategorySchema.index({ title: "text" });
 
 const subCategoryModel = mongoose.model("subCategory", subCategorySchema);
 export default subCategoryModel;

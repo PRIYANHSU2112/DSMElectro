@@ -161,5 +161,6 @@ const comboSchema = new mongoose.Schema(
 
 comboSchema.index({ "items.variantId": 1 });
 comboSchema.index({ createdAt: -1 });
+comboSchema.index({ name: "text", description: "text", sku: "text" });
 
 export default mongoose.model("combo", comboSchema);

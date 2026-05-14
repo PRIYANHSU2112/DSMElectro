@@ -185,6 +185,7 @@ productSchema.index({ countries: 1 });
 productSchema.index({ states: 1 });
 productSchema.index({ cities: 1 });
 productSchema.index({ pincodes: 1 });
+productSchema.index({ name: "text", description: "text", sku: "text" });
 
 const productModel = mongoose.model("product", productSchema);
 

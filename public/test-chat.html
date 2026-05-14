@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Chat Tester | DSMElectro</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --user-msg: #334155;
+            --admin-msg: #4338ca;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        /* Sidebar/Config */
+        .config-panel {
+            width: 350px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 { font-size: 1.5rem; margin-bottom: 8px; color: var(--primary); }
+        p { font-size: 0.875rem; color: var(--text-muted); }
+
+        .input-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
+        
+        input, select {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            color: white;
+            font-size: 0.875rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus { border-color: var(--primary); }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover { background: var(--primary-hover); }
+        button.secondary { background: #334155; }
+        button.secondary:hover { background: #475569; }
+
+        /* Chat Area */
+        .chat-container {
+            flex: 1;
+            background: var(--card-bg);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        #status-dot.online { background: #22c55e; }
+
+        #messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            align-self: flex-start;
+            background: var(--user-msg);
+            border-bottom-left-radius: 2px;
+        }
+
+        .message.admin {
+            align-self: flex-end;
+            background: var(--admin-msg);
+            border-bottom-right-radius: 2px;
+        }
+
+        .message .meta {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .message .text { font-size: 0.9375rem; line-height: 1.5; }
+
+        .typing-indicator {
+            padding: 8px 24px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-style: italic;
+            height: 30px;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            border-top: 1px solid #334155;
+            display: flex;
+            gap: 12px;
+        }
+
+        #message-input { flex: 1; }
+
+        .system-msg {
+            align-self: center;
+            font-size: 0.75rem;
+            background: #334155;
+            padding: 4px 12px;
+            border-radius: 20px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="config-panel">
+        <div>
+            <h2>Chat Tester</h2>
+            <p>DSMElectro Ticket System</p>
+        </div>
+
+        <div class="input-group">
+            <label>Server URL</label>
+            <input type="text" id="serverUrl" placeholder="http://localhost:2000">
+        </div>
+
+        <div class="input-group">
+            <label>Authentication Token</label>
+            <input type="text" id="token" placeholder="Paste your JWT token here...">
+        </div>
+
+        <div class="input-group">
+            <label>Ticket ID</label>
+            <input type="text" id="ticketId" placeholder="e.g. 66421a...">
+        </div>
+
+        <button id="connect-btn">Connect & Join Room</button>
+        <button id="disconnect-btn" class="secondary">Disconnect</button>
+
+        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid #334155;">
+            <p style="font-size: 0.75rem;">Tip: Open this page in two different browser tabs to test User vs Admin interaction.</p>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <div class="chat-header">
+            <div>
+                <span id="status-dot"></span>
+                <span id="header-ticket">No Ticket Selected</span>
+            </div>
+            <div id="header-user" style="font-size: 0.875rem; color: var(--text-muted);">Not Connected</div>
+        </div>
+
+        <div id="messages">
+            <div class="system-msg">Welcome to DSMElectro Ticket Support</div>
+        </div>
+
+        <div class="typing-indicator" id="typing-box"></div>
+
+        <div class="chat-input-area">
+            <input type="text" id="message-input" placeholder="Type your message..." disabled>
+            <button id="send-btn" disabled>Send</button>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let currentTicketId = '';
+
+        const serverUrlInput = document.getElementById('serverUrl');
+        const tokenInput = document.getElementById('token');
+        const ticketIdInput = document.getElementById('ticketId');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const messageInput = document.getElementById('message-input');
+        const messagesDiv = document.getElementById('messages');
+        const typingBox = document.getElementById('typing-box');
+        const statusDot = document.getElementById('status-dot');
+        const headerTicket = document.getElementById('header-ticket');
+        const headerUser = document.getElementById('header-user');
+
+        // Set default server URL if empty
+        if (!serverUrlInput.value) {
+            const origin = window.location.origin;
+            // If we are on port 5500 (Live Server), default to the backend port 2000
+            if (origin.includes(':5500')) {
+                serverUrlInput.value = 'http://localhost:2000';
+            } else {
+                serverUrlInput.value = origin.includes('http') ? origin : 'http://localhost:2000';
+            }
+        }
+
+        connectBtn.onclick = () => {
+            const serverUrl = serverUrlInput.value.trim();
+            const token = tokenInput.value.trim();
+            const ticketId = ticketIdInput.value.trim();
+
+            if (!token || !ticketId) {
+                alert("Please provide both Token and Ticket ID");
+                return;
+            }
+
+            if (socket) socket.disconnect();
+
+            // Connect to server
+            socket = io(serverUrl, {
+                auth: { token: token },
+                transports: ['websocket', 'polling'] // Try websocket first
+            });
+
+            socket.on('connect', () => {
+                console.log('Connected to socket server');
+                statusDot.classList.add('online');
+                headerTicket.innerText = `Ticket: ${ticketId}`;
+                headerUser.innerText = `Socket Connected`;
+                
+                // Join Room
+                socket.emit('joinTicket', { ticketId });
+                currentTicketId = ticketId;
+
+                // Enable inputs
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                
+                addSystemMessage(`Joined Ticket: ${ticketId}`);
+            });
+
+            socket.on('connect_error', (err) => {
+                alert(`Connection Error: ${err.message}`);
+                headerUser.innerText = `Error: ${err.message}`;
+            });
+
+            // Handle Chat History
+            socket.on('chat:chatHistory', (data) => {
+                // Clear existing messages (except the welcome message)
+                messagesDiv.innerHTML = '<div class="system-msg">Welcome to DSMElectro Ticket Support</div>';
+                
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        addMessage({
+                            sender: msg.sender,
+                            text: msg.text,
+                            time: msg.time
+                        });
+                    });
+                    addSystemMessage(`Loaded ${data.messages.length} past messages.`);
+                }
+                
+                if (data.status) {
+                    addSystemMessage(`Ticket Status: ${data.status}`);
+                }
+            });
+
+            socket.on('chat:newMessage', (data) => {
+                addMessage(data);
+            });
+
+            socket.on('chat:typing', (data) => {
+                typingBox.innerText = `${data.senderName || data.sender || 'Someone'} is typing...`;
+            });
+
+            socket.on('chat:stopTyping', () => {
+                typingBox.innerText = '';
+            });
+
+            socket.on('statusUpdate', (data) => {
+                addSystemMessage(`Ticket status changed to: ${data.newStatus}`);
+            });
+
+            socket.on('error', (data) => {
+                console.error("Socket Error:", data);
+                addSystemMessage(`Error: ${data.message}`);
+            });
+
+            socket.on('socketError', (data) => {
+                console.error("Socket Error:", data);
+                addSystemMessage(`Error: ${data.message}`);
+            });
+
+            socket.on('disconnect', () => {
+                statusDot.classList.remove('online');
+                headerUser.innerText = 'Disconnected';
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+            });
+        };
+
+        disconnectBtn.onclick = () => {
+            if (socket) socket.disconnect();
+        };
+
+        sendBtn.onclick = sendMessage;
+        messageInput.onkeypress = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        // Typing logic
+        let typingTimeout;
+        messageInput.oninput = () => {
+            if (!socket) return;
+            socket.emit('chat:typing', { ticketId: currentTicketId, senderName: 'Me' });
+            
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                socket.emit('chat:stopTyping', { ticketId: currentTicketId });
+            }, 2000);
+        };
+
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || !socket) return;
+
+            socket.emit('chat:sendMessage', {
+                ticketId: currentTicketId,
+                text: text
+            });
+
+            messageInput.value = '';
+            socket.emit('chat:stopTyping', { ticketId: currentTicketId });
+        }
+
+        function addMessage(data) {
+            const div = document.createElement('div');
+            const isMe = false; // Logic for "Me" is tricky without local state, but we'll show based on data
+            
+            div.className = `message ${data.sender === 'ADMIN' ? 'admin' : 'user'}`;
+            
+            div.innerHTML = `
+                <div class="meta">
+                    <span>${data.sender}</span>
+                    <span>${new Date(data.time).toLocaleTimeString()}</span>
+                </div>
+                <div class="text">${data.text}</div>
+            `;
+            
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'system-msg';
+            div.innerText = text;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>

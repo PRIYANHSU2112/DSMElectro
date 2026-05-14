@@ -74,6 +74,7 @@ projectSchema.pre("save", function () {
 
 projectSchema.index({ title: 1 });
 projectSchema.index({ category: 1, subCategory: 1 });
+projectSchema.index({ title: "text", description: "text" });
 
 const projectModel = mongoose.model("Project", projectSchema);
 export default projectModel;

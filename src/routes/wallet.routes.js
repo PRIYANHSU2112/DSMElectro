@@ -11,5 +11,6 @@ router.get("/wallet/transactions", authUser, WalletController.getTransactions);
  
 // Admin route
 router.post("/wallet/admin/adjust", authUser, adminMiddleware, WalletController.adminAdjust);
+
  
 export default router;

@@ -35,12 +35,16 @@ import addressRoutes from "./routes/address.routes.js";
 import invoiceRoutes from "./routes/invoice.routes.js";
 import homeRoutes from "./routes/home.routes.js";
 import bannerRoutes from "./routes/banner.routes.js";
+import brandRoutes from "./routes/brand.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
+import searchRoutes from "./routes/search.routes.js";
+import ticketRoutes from "./routes/ticket.routes.js";
 
 const app = express();
 
 // Middleware
 app.use(express.json());
+app.use(express.static("public"));
 app.use(cors(
   {origin: "*", // Allow all origins
     methods: ["GET", "POST", "PUT", "DELETE"], // Allow specific HTTP methods
@@ -53,6 +57,7 @@ app.get("/", (req, res) => {
   res.send("API Running");
 });
 
+app.use("/api/v1", searchRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1", categoryRoutes);
 app.use("/api/v1", countryRoutes);
@@ -87,7 +92,9 @@ app.use("/api/v1", addressRoutes);
 app.use("/api/v1", invoiceRoutes);
 app.use("/api/v1", homeRoutes);
 app.use("/api/v1/banners", bannerRoutes);
+app.use("/api/v1", brandRoutes);
 app.use("/api/v1", dashboardRoutes);
+app.use("/api/v1", ticketRoutes);
 app.use(errorHandler);
 
 export default app;

@@ -8,7 +8,8 @@ export default class DashboardController {
    */
   static getFullDashboard = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const dashboard = await DashboardService.getFullDashboard();
+      const { filter } = req.query;
+      const dashboard = await DashboardService.getFullDashboard(filter);
       return [dashboard, "Dashboard loaded successfully"];
     });
 
@@ -18,7 +19,8 @@ export default class DashboardController {
    */
   static getProductStats = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const dates = getDateBoundaries();
+      const { filter } = req.query;
+      const dates = getDateBoundaries(filter);
       const stats = await DashboardService.getProductStats(dates);
       return [stats, "Product stats loaded"];
     });
@@ -28,7 +30,8 @@ export default class DashboardController {
    */
   static getOrderStats = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const dates = getDateBoundaries();
+      const { filter } = req.query;
+      const dates = getDateBoundaries(filter);
       const stats = await DashboardService.getOrderStats(dates);
       return [stats, "Order stats loaded"];
     });
@@ -38,19 +41,20 @@ export default class DashboardController {
    */
   static getRevenueStats = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const dates = getDateBoundaries();
+      const { filter } = req.query;
+      const dates = getDateBoundaries(filter);
       const stats = await DashboardService.getRevenueStats(dates);
       return [stats, "Revenue stats loaded"];
     });
 
   /**
-   * GET /api/v1/dashboard/revenue-chart?days=7
+   * GET /api/v1/dashboard/revenue-chart?days=30
    */
   static getRevenueChart = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const days = parseInt(req.query.days) || 7;
-      const chart = await DashboardService.getRevenueChart(days);
-      return [{ chart }, "Revenue chart loaded"];
+      const days = parseInt(req.query.days) || 30;
+      const chartData = await DashboardService.getRevenueChart(days);
+      return [chartData, "Charts data loaded"];
     });
 
   /**

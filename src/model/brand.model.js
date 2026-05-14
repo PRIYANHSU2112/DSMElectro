@@ -28,6 +28,8 @@ const brandSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+brandSchema.index({ brandName: "text" });
+
 const brandModel = mongoose.model("brand", brandSchema);
 
 export default brandModel;

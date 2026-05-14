@@ -20,38 +20,58 @@ function pctChange(current, previous) {
 }
 
 /** Get start-of-day Date objects for "today" and "this month / last month" boundaries */
-export function getDateBoundaries() {
+export function getDateBoundaries(filter) {
   const now = new Date();
 
   // Today 00:00
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  // This month 1st 00:00
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  let currentStart, currentEnd, prevStart, prevEnd;
 
-  // Last month boundaries
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthEnd = thisMonthStart; // exclusive upper bound
+  currentEnd = now;
 
-  // This week (Monday start)
-  const dayOfWeek = now.getDay();
-  const diffToMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon);
-
-  // Last week
-  const lastWeekStart = new Date(thisWeekStart);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  const lastWeekEnd = thisWeekStart;
+  switch (filter) {
+    case 'today':
+      currentStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      prevStart = new Date(currentStart);
+      prevStart.setDate(prevStart.getDate() - 1);
+      prevEnd = new Date(currentStart);
+      break;
+    case 'last_7_days':
+      currentStart = new Date(now);
+      currentStart.setDate(currentStart.getDate() - 7);
+      prevStart = new Date(currentStart);
+      prevStart.setDate(prevStart.getDate() - 7);
+      prevEnd = currentStart;
+      break;
+    case 'all_time':
+      currentStart = new Date(0);
+      prevStart = new Date(0);
+      prevEnd = new Date(0);
+      break;
+    default:
+      if (filter && /^\d{4}$/.test(filter)) {
+        const year = parseInt(filter, 10);
+        currentStart = new Date(year, 0, 1);
+        currentEnd = new Date(year + 1, 0, 1);
+        prevStart = new Date(year - 1, 0, 1);
+        prevEnd = new Date(year, 0, 1);
+      } else {
+        // month / this_month / default
+        currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        prevEnd = currentStart;
+      }
+      break;
+  }
 
   return {
     now,
     todayStart,
-    thisMonthStart,
-    lastMonthStart,
-    lastMonthEnd,
-    thisWeekStart,
-    lastWeekStart,
-    lastWeekEnd,
+    currentStart,
+    currentEnd,
+    prevStart,
+    prevEnd,
   };
 }
 
@@ -64,7 +84,7 @@ export default class DashboardService {
   static async getProductStats(dates) {
     const LOW_STOCK_THRESHOLD = 10;
 
-    const [totalProducts, lowStockVariants, thisMonthProducts, lastMonthProducts] =
+    const [totalProducts, lowStockVariants, currentProducts, prevProducts] =
       await Promise.all([
         // Total active SKUs (products)
         productModel.countDocuments({ disable: { $ne: true } }),
@@ -75,19 +95,19 @@ export default class DashboardService {
           stock: { $lte: LOW_STOCK_THRESHOLD, $gt: 0 },
         }),
 
-        // Products added this month
-        productModel.countDocuments({ createdAt: { $gte: dates.thisMonthStart } }),
+        // Products added this period
+        productModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
 
-        // Products added last month
+        // Products added previous period
         productModel.countDocuments({
-          createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+          createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
       ]);
 
     return {
       totalSKUs: totalProducts,
       lowStock: lowStockVariants,
-      change: pctChange(thisMonthProducts, lastMonthProducts),
+      change: pctChange(currentProducts, prevProducts),
     };
   }
 
@@ -97,7 +117,7 @@ export default class DashboardService {
   static async getMarketingStats(dates) {
     const now = dates.now;
 
-    const [activeFlashSales, activeCombos, lastMonthFlash, thisMonthFlash] =
+    const [activeFlashSales, activeCombos, prevFlash, currentFlash] =
       await Promise.all([
         flashSaleModel.countDocuments({
           isActive: true,
@@ -108,18 +128,18 @@ export default class DashboardService {
         comboModel.countDocuments({ disable: { $ne: true } }),
 
         flashSaleModel.countDocuments({
-          createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+          createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
 
         flashSaleModel.countDocuments({
-          createdAt: { $gte: dates.thisMonthStart },
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
         }),
       ]);
 
     return {
       activeFlashSales,
       activeCombos,
-      change: pctChange(thisMonthFlash, lastMonthFlash),
+      change: pctChange(currentFlash, prevFlash),
     };
   }
 
@@ -127,13 +147,13 @@ export default class DashboardService {
   //  3. ORDER STATS
   // ──────────────────────────────────────────────────────────────────────────
   static async getOrderStats(dates) {
-    const [pendingOrders, todayOrders, thisWeekOrders, lastWeekOrders, totalOrders] =
+    const [pendingOrders, todayOrders, currentOrders, prevOrders, totalOrders] =
       await Promise.all([
         orderModel.countDocuments({ status: "PENDING" }),
         orderModel.countDocuments({ createdAt: { $gte: dates.todayStart } }),
-        orderModel.countDocuments({ createdAt: { $gte: dates.thisWeekStart } }),
+        orderModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
         orderModel.countDocuments({
-          createdAt: { $gte: dates.lastWeekStart, $lt: dates.lastWeekEnd },
+          createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
         orderModel.countDocuments({}),
       ]);
@@ -142,8 +162,8 @@ export default class DashboardService {
       pending: pendingOrders,
       today: todayOrders,
       totalOrders,
-      thisWeek: thisWeekOrders,
-      change: pctChange(thisWeekOrders, lastWeekOrders),
+      thisWeek: currentOrders,
+      change: pctChange(currentOrders, prevOrders),
     };
   }
 
@@ -151,11 +171,11 @@ export default class DashboardService {
   //  4. REVENUE STATS (aggregation pipeline)
   // ──────────────────────────────────────────────────────────────────────────
   static async getRevenueStats(dates) {
-    const [thisMonthRevResult, lastMonthRevResult] = await Promise.all([
+    const [currentRevResult, prevRevResult] = await Promise.all([
       orderModel.aggregate([
         {
           $match: {
-            createdAt: { $gte: dates.thisMonthStart },
+            createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
             status: { $nin: ["CANCELLED", "RETURNED"] },
             paymentStatus: "PAID",
           },
@@ -166,7 +186,7 @@ export default class DashboardService {
       orderModel.aggregate([
         {
           $match: {
-            createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+            createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
             status: { $nin: ["CANCELLED", "RETURNED"] },
             paymentStatus: "PAID",
           },
@@ -175,8 +195,8 @@ export default class DashboardService {
       ]),
     ]);
 
-    const thisMonthRevenue = thisMonthRevResult[0]?.total || 0;
-    const lastMonthRevenue = lastMonthRevResult[0]?.total || 0;
+    const currentRevenue = currentRevResult[0]?.total || 0;
+    const prevRevenue = prevRevResult[0]?.total || 0;
 
     // Total all-time revenue
     const [allTimeResult] = await orderModel.aggregate([
@@ -191,9 +211,9 @@ export default class DashboardService {
 
     return {
       totalRevenue: allTimeResult?.total || 0,
-      thisMonth: thisMonthRevenue,
-      lastMonth: lastMonthRevenue,
-      change: pctChange(thisMonthRevenue, lastMonthRevenue),
+      thisMonth: currentRevenue,
+      lastMonth: prevRevenue,
+      change: pctChange(currentRevenue, prevRevenue),
     };
   }
 
@@ -201,14 +221,14 @@ export default class DashboardService {
   //  5. USER STATS
   // ──────────────────────────────────────────────────────────────────────────
   static async getUserStats(dates) {
-    const [totalUsers, activeUsers, newToday, thisMonthUsers, lastMonthUsers] =
+    const [totalUsers, activeUsers, newToday, currentUsers, prevUsers] =
       await Promise.all([
         userModel.countDocuments({}),
         userModel.countDocuments({ disable: { $ne: true } }),
         userModel.countDocuments({ createdAt: { $gte: dates.todayStart } }),
-        userModel.countDocuments({ createdAt: { $gte: dates.thisMonthStart } }),
+        userModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
         userModel.countDocuments({
-          createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+          createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
       ]);
 
@@ -216,7 +236,7 @@ export default class DashboardService {
       totalUsers,
       activeUsers,
       newToday,
-      change: pctChange(thisMonthUsers, lastMonthUsers),
+      change: pctChange(currentUsers, prevUsers),
     };
   }
 
@@ -224,7 +244,7 @@ export default class DashboardService {
   //  6. AFFILIATE STATS
   // ──────────────────────────────────────────────────────────────────────────
   static async getAffiliateStats(dates) {
-    const [totalAffiliates, activeAffiliates, pendingKYC, payoutsResult, thisMonth, lastMonth] =
+    const [totalAffiliates, activeAffiliates, pendingKYC, payoutsResult, currentAff, prevAff] =
       await Promise.all([
         affiliateModel.countDocuments({}),
         affiliateModel.countDocuments({ status: "approved" }),
@@ -235,9 +255,9 @@ export default class DashboardService {
           { $group: { _id: null, total: { $sum: "$totalWithdrawn" } } },
         ]),
 
-        affiliateModel.countDocuments({ createdAt: { $gte: dates.thisMonthStart } }),
+        affiliateModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
         affiliateModel.countDocuments({
-          createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+          createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
       ]);
 
@@ -246,7 +266,7 @@ export default class DashboardService {
       activeAffiliates,
       pendingKYC,
       totalPayouts: payoutsResult[0]?.total || 0,
-      change: pctChange(thisMonth, lastMonth),
+      change: pctChange(currentAff, prevAff),
     };
   }
 
@@ -254,20 +274,20 @@ export default class DashboardService {
   //  7. B2B / BULK INQUIRY STATS
   // ──────────────────────────────────────────────────────────────────────────
   static async getB2BStats(dates) {
-    const [totalInquiries, unreadInquiries, thisMonth, lastMonth] =
+    const [totalInquiries, unreadInquiries, currentB2B, prevB2B] =
       await Promise.all([
         bulkInquiryModel.countDocuments({}),
         bulkInquiryModel.countDocuments({ status: "pending" }),
-        bulkInquiryModel.countDocuments({ createdAt: { $gte: dates.thisMonthStart } }),
+        bulkInquiryModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
         bulkInquiryModel.countDocuments({
-          createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+          createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
       ]);
 
     return {
       totalInquiries,
       unread: unreadInquiries,
-      change: pctChange(thisMonth, lastMonth),
+      change: pctChange(currentB2B, prevB2B),
     };
   }
 
@@ -310,49 +330,133 @@ export default class DashboardService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  //  10. REVENUE CHART DATA (last 7 or 30 days)
+  //  10. ANALYTICS CHART DATA (Revenue, Status, Top Products, Payment Split)
   // ──────────────────────────────────────────────────────────────────────────
-  static async getRevenueChart(days = 7) {
+  static async getRevenueChart(days = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
 
-    const result = await orderModel.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate },
-          status: { $nin: ["CANCELLED", "RETURNED"] },
-          paymentStatus: "PAID",
-        },
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+    const [revenueTrend, orderStatusDistribution, paymentMethodSplit, topSellingProducts] = await Promise.all([
+      // 1. Revenue Trend
+      orderModel.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate },
+            status: { $nin: ["CANCELLED", "RETURNED"] },
+            paymentStatus: "PAID",
           },
-          revenue: { $sum: "$orderTotal" },
-          orders: { $sum: 1 },
         },
-      },
-      { $sort: { _id: 1 } },
-      {
-        $project: {
-          _id: 0,
-          date: "$_id",
-          revenue: 1,
-          orders: 1,
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+            },
+            revenue: { $sum: "$orderTotal" },
+            orders: { $sum: 1 },
+          },
         },
-      },
+        { $sort: { _id: 1 } },
+        {
+          $project: {
+            _id: 0,
+            date: "$_id",
+            revenue: 1,
+            orders: 1,
+          },
+        },
+      ]),
+
+      // 2. Order Status Distribution
+      orderModel.aggregate([
+        {
+          $match: { createdAt: { $gte: startDate } }
+        },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            status: "$_id",
+            count: 1
+          }
+        }
+      ]),
+
+      // 3. Payment Method Split
+      orderModel.aggregate([
+        {
+          $match: { createdAt: { $gte: startDate } }
+        },
+        {
+          $group: {
+            _id: "$paymentMethod",
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            method: "$_id",
+            count: 1
+          }
+        }
+      ]),
+
+      // 4. Top Selling Products
+      orderModel.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate },
+            status: { $nin: ["CANCELLED", "RETURNED"] }
+          }
+        },
+        { $unwind: "$product" },
+        {
+          $group: {
+            _id: "$product.productId",
+            totalSold: { $sum: "$product.quantity" }
+          }
+        },
+        { $sort: { totalSold: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: "products", // collection name for "product" model
+            localField: "_id",
+            foreignField: "_id",
+            as: "productDetails"
+          }
+        },
+        { $unwind: { path: "$productDetails", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 0,
+            productId: "$_id",
+            name: { $ifNull: ["$productDetails.name", "Unknown Product"] },
+            totalSold: 1
+          }
+        }
+      ])
     ]);
 
-    return result;
+    return {
+      revenueTrend,
+      orderStatusDistribution,
+      paymentMethodSplit,
+      topSellingProducts
+    };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   //  MAIN: Orchestrate all stats in parallel with Redis caching
   // ══════════════════════════════════════════════════════════════════════════
-  static async getFullDashboard() {
-    const CACHE_KEY = "dashboard:admin:full";
+  static async getFullDashboard(filter) {
+    const CACHE_KEY = `dashboard:admin:full:${filter || 'month'}`;
     const CACHE_TTL = 120; // 2 minutes
 
     // Try cache first
@@ -363,7 +467,7 @@ export default class DashboardService {
       // Redis down — continue without cache
     }
 
-    const dates = getDateBoundaries();
+    const dates = getDateBoundaries(filter);
 
     // Run ALL heavy computations in parallel
     const [
@@ -375,8 +479,7 @@ export default class DashboardService {
       affiliates,
       b2b,
       wallet,
-      // recentOrders,
-      // revenueChart,
+    
     ] = await Promise.all([
       DashboardService.getProductStats(dates),
       DashboardService.getMarketingStats(dates),
@@ -386,8 +489,7 @@ export default class DashboardService {
       DashboardService.getAffiliateStats(dates),
       DashboardService.getB2BStats(dates),
       DashboardService.getWalletStats(),
-      // DashboardService.getRecentOrders(10),
-      // DashboardService.getRevenueChart(7),
+    
     ]);
 
     const dashboard = {
@@ -421,9 +523,7 @@ export default class DashboardService {
         pendingOrders: orders.pending,
       },
 
-      // ── Chart data ──
-      // revenueChart,
-      // recentOrders,
+  
     };
 
     // Cache result
