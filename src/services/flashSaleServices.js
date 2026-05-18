@@ -3,6 +3,7 @@ import productModel from "../model/product.model.js";
 import variantModel from "../model/variant.model.js";
 import comboModel from "../model/combo.model.js";
 import redisClient from "../config/redis.js";
+import { AppError } from "../utils/apiResponse.js";
 
 export default class FlashSaleService {
   static async create(payload) {
@@ -139,5 +140,100 @@ export default class FlashSaleService {
 
     await sale.save();
     return sale;
+  }
+
+  static async getAll(query = {}) {
+    const { page = 1, limit = 10, search, isActive } = query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const filter = {};
+    if (search) {
+      filter.title = { $regex: search, $options: "i" };
+    }
+    if (isActive !== undefined) {
+      filter.isActive = isActive === "true" || isActive === true;
+    }
+
+    const [data, total] = await Promise.all([
+      flashSaleModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .populate("products", "name icon")
+        .populate("variants", "mrp finalPrice weight size")
+        .populate("combos"),
+      flashSaleModel.countDocuments(filter),
+    ]);
+    
+    return {
+      data,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    };
+  }
+
+  static async getById(id) {
+    const offer = await flashSaleModel.findById(id)
+      .populate("products")
+      .populate("variants")
+      .populate("combos");
+
+    if (!offer) throw new AppError("Flash sale not found.", 404);
+    return offer;
+  }
+
+  static async deactivate(offerId) {
+    const offer = await flashSaleModel.findById(offerId);
+    if (!offer) throw new AppError("Flash sale not found.", 404);
+    if (!offer.isActive) throw new AppError("Flash sale is already inactive.", 400);
+
+    if (offer.products && offer.products.length) {
+      await productModel.updateMany(
+        { _id: { $in: offer.products } },
+        { flashSale: false }
+      );
+    }
+
+    if (offer.variants && offer.variants.length) {
+      await variantModel.updateMany(
+        { _id: { $in: offer.variants } },
+        { flashSale: false }
+      );
+    }
+
+    if (offer.combos && offer.combos.length) {
+      const comboDocs = await comboModel
+        .find({ _id: { $in: offer.combos } }, "_id totalMrp")
+        .lean();
+
+      const comboOps = comboDocs.map((c) => ({
+        updateOne: {
+          filter: { _id: c._id },
+          update: {
+            flashSale: false,
+            discount: null,
+            discountAmount: 0,
+            comboPrice: c.totalMrp ?? 0,
+          },
+        },
+      }));
+
+      if (comboOps.length) {
+        await comboModel.bulkWrite(comboOps);
+      }
+    }
+
+    offer.isActive = false;
+    await offer.save();
+
+    // Clear redis cache for products
+    const keys = await redisClient.keys("products:user:*");
+    if (keys && keys.length) await redisClient.del(keys);
+
+    return offer;
   }
 }

@@ -1,5 +1,6 @@
 import cityModel from "../model/city.model.js";
 import { AppError } from "../utils/apiResponse.js";
+import mongoose from "mongoose";
 
 export default class CityService {
   static async createCity(payload) {
@@ -7,6 +8,7 @@ export default class CityService {
   }
 
   static async updateCity(id, payload) {
+    if (!mongoose.isValidObjectId(id)) throw new AppError("Invalid City ID", 400);
     const city = await cityModel.findById(id);
     if (!city) throw new AppError("City not found", 404);
 
@@ -17,6 +19,7 @@ export default class CityService {
   }
 
   static async deleteCity(id) {
+    if (!mongoose.isValidObjectId(id)) throw new AppError("Invalid City ID", 400);
     const city = await cityModel.findById(id);
     if (!city) throw new AppError("City not found", 404);
 
@@ -25,6 +28,7 @@ export default class CityService {
   }
 
   static async toggleCityStatus(id) {
+    if (!mongoose.isValidObjectId(id)) throw new AppError("Invalid City ID", 400);
     const city = await cityModel.findById(id);
     if (!city) throw new AppError("City not found", 404);
 
@@ -62,7 +66,14 @@ export default class CityService {
   }
 
   static async getCityById(id) {
-    const city = await cityModel.findById(id).populate("stateId countryId");
+    let query;
+    if (mongoose.isValidObjectId(id)) {
+      query = { _id: id };
+    } else {
+      query = { name: { $regex: new RegExp(`^${id}$`, "i") } };
+    }
+
+    const city = await cityModel.findOne(query).populate("stateId countryId");
 
     if (!city) throw new AppError("City not found", 404);
 

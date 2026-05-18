@@ -1,6 +1,7 @@
 import Job from "../model/job.model.js";
 import JobApplication from "../model/jobApplication.model.js";
 import redisClient from "../config/redis.js";
+import mongoose from "mongoose";
 
 export default class JobService {
   static async createJob(data) {
@@ -10,20 +11,20 @@ export default class JobService {
   }
 
   static async getAllJobs(query) {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search, 
-      jobType, 
-      workMode, 
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      jobType,
+      workMode,
       country,
       state,
       city,
-      sort = "newest" 
+      sort = "newest"
     } = query;
 
     const cacheKey = `jobs:list:${JSON.stringify(query)}`;
-    
+
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) return JSON.parse(cached);
@@ -112,7 +113,7 @@ export default class JobService {
       .populate("state", "name")
       .populate("city", "name")
       .lean();
-      
+
     if (!job) throw new Error("Job not found");
 
     try {
@@ -166,7 +167,7 @@ export default class JobService {
     try {
       const keys = await redisClient.keys("jobs:list:*");
       if (id) keys.push(`job:${id}`);
-      
+
       if (keys.length > 0) {
         await redisClient.del(keys);
       }

@@ -22,12 +22,7 @@ export default class FlashSaleController {
 
   static async getAll(req, res) {
     return handleApiRequest(req, res, async () => {
-      const { page, limit } = req.query;
-
-      const result = await FlashSaleService.getAll({
-        page: Number(page) || 1,
-        limit: Number(limit) || 10,
-      });
+      const result = await FlashSaleService.getAll(req.query);
 
       return [{ data: result }, "All flash sales fetched"];
     });
