@@ -1,0 +1,165 @@
+{
+  "info": {
+    "name": "Address API",
+    "description": "Postman collection for the Address section of the DSM Electro API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": {
+      "major": 1,
+      "minor": 0,
+      "patch": 0
+    }
+  },
+  "item": [
+    {
+      "name": "Create Address",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"country\": \"{{countryId}}\",\n  \"state\": \"{{stateId}}\",\n  \"city\": \"{{cityId}}\",\n  \"pincode\": \"{{pincodeId}}\",\n  \"street\": \"123 Main St, Apartment 4B\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "address"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get All Addresses",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/address",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "address"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Address By ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/address/{{addressId}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "address", "{{addressId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Update Address",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"street\": \"456 Oak Ave, Suite 12\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/address/{{addressId}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "address", "{{addressId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Delete Address",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/address/{{addressId}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "address", "{{addressId}}"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/api"
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    },
+    {
+      "key": "countryId",
+      "value": ""
+    },
+    {
+      "key": "stateId",
+      "value": ""
+    },
+    {
+      "key": "cityId",
+      "value": ""
+    },
+    {
+      "key": "pincodeId",
+      "value": ""
+    },
+    {
+      "key": "addressId",
+      "value": ""
+    }
+  ]
+}

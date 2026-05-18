@@ -18,7 +18,7 @@ export default class WalletController {
 
       // In production you'd create a Razorpay order here and verify
       // before crediting. For now we credit directly (e.g. after your
-      // payment gateway callback calls this internally).
+      // payment gatewayck calls this internally).
       const wallet = await WalletService.topUp(req.user._id, Number(amount));
       return [{ data: wallet }, `₹${amount} added to wallet`];
     });
