@@ -75,6 +75,13 @@ router.get(
 );
 
 router.get(
+  "/products/dashboard",
+  authUser,
+  adminMiddleware,
+  ProductController.getProductDashboard,
+);
+
+router.get(
   "/products/trending",
   authUser,
   ProductController.getTrendingProducts,

@@ -38,6 +38,8 @@ import homeRoutes from "./routes/home.routes.js";
 import bannerRoutes from "./routes/banner.routes.js";
 import brandRoutes from "./routes/brand.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
+import productDashboardRoutes from "./routes/productDashboard.routes.js";
+import projectDashboardRoutes from "./routes/projectDashboard.routes.js";
 import searchRoutes from "./routes/search.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import roleRoutes from "./routes/role.routes.js";
@@ -48,10 +50,11 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 app.use(cors(
-  {origin: "*", // Allow all origins
-    methods: ["GET", "POST", "PUT", "DELETE","PATCH"], // Allow specific HTTP methods
+  {
+    origin: "*", // Allow all origins
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Allow specific HTTP methods
     allowedHeaders: ["Content-Type", "Authorization"] // Allow specific headers
-    }
+  }
 ));
 
 // Routes
@@ -100,6 +103,8 @@ app.use("/api/v1", homeRoutes);
 app.use("/api/v1/banners", bannerRoutes);
 app.use("/api/v1", brandRoutes);
 app.use("/api/v1", dashboardRoutes);
+app.use("/api/v1", productDashboardRoutes);
+app.use("/api/v1", projectDashboardRoutes);
 app.use("/api/v1", ticketRoutes);
 app.use("/api/v1", roleRoutes);
 app.use(errorHandler);

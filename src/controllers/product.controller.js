@@ -1,6 +1,7 @@
 import slugify from "slugify";
 import { handleApiRequest, ValidationError } from "../utils/apiResponse.js";
 import ProductService from "../services/productServices.js";
+import ProductDashboardService from "../services/productDashboard.service.js";
 import { createProductWithVariantSchema } from "../validators/ProductValidation.js";
 
 export default class ProductController {
@@ -158,6 +159,20 @@ static async setReferralCommission(req, res) {
     return handleApiRequest(req, res, async () => {
       const result = await ProductService.getTrendingProducts(req.query);
       return [{ data: result }, "Trending products fetched successfully", 200];
+    });
+  }
+
+  // GET /products/dashboard
+  // Query: ?sortBy=unitsSold|revenue  &categoryId=...  &limit=10
+  static async getProductDashboard(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { sortBy, categoryId, limit } = req.query;
+      const result = await ProductDashboardService.getProductDashboard({
+        sortBy:     sortBy     || "unitsSold",
+        categoryId: categoryId || null,
+        limit:      limit      ? parseInt(limit, 10) : 10,
+      });
+      return [{ data: result }, "Product dashboard fetched successfully"];
     });
   }
 }
