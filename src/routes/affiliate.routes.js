@@ -28,7 +28,10 @@ router.get(
 router.post(
   "/affiliate/register",
   authUser,
-  ObjectStorageService.s3Uploader().fields([{ name: "panImage", maxCount: 1 }]),
+  ObjectStorageService.s3Uploader().fields([
+    { name: "panImage", maxCount: 1 },
+    { name: "adharImage", maxCount: 1 },
+  ]),
   AffiliateController.register,
 );
 
@@ -66,6 +69,13 @@ router.get(
   AffiliateController.getMyWithdrawals,
 );
 
+// get active tiers (for progress UI)
+router.get(
+  "/affiliate/me/tiers",
+  authUser,
+  AffiliateController.getActiveTiers,
+);
+
 //  ADMIN ROUTES
 
 // list all withdrawal requests — ?status=pending|processed|rejected&method=upi|bank|dsm
@@ -82,6 +92,13 @@ router.get(
   authUser,
   adminMiddleware,
   AffiliateController.getAdminStats,
+);
+
+router.get(
+  "/affiliate/admin/dashboard-overview",
+  authUser,
+  adminMiddleware,
+  AffiliateController.getAdminDashboardOverview,
 );
 
 router.get(
@@ -135,6 +152,36 @@ router.patch(
   authUser,
   adminMiddleware,
   AffiliateController.processWithdrawal,
+);
+
+// ── ADMIN TIER ROUTES ────────────────────────────────────────────────────────
+
+router.post(
+  "/affiliate/admin/tiers",
+  authUser,
+  adminMiddleware,
+  AffiliateController.createTier,
+);
+
+router.get(
+  "/affiliate/admin/tiers",
+  authUser,
+  adminMiddleware,
+  AffiliateController.getAllTiers,
+);
+
+router.patch(
+  "/affiliate/admin/tiers/:id",
+  authUser,
+  adminMiddleware,
+  AffiliateController.updateTier,
+);
+
+router.delete(
+  "/affiliate/admin/tiers/:id",
+  authUser,
+  adminMiddleware,
+  AffiliateController.deleteTier,
 );
 
 export default router;

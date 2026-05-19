@@ -24,6 +24,8 @@ const affiliateSchema = new mongoose.Schema(
     // ── KYC ─────────────────────────────────────────────────────────────────
     panNumber: { type: String, required: true, trim: true, uppercase: true },
     panImage: { type: String, required: true }, // S3 URL
+    adharNumber: { type: String, required: true, trim: true },
+    adharImage: { type: String, required: true }, // S3 URL
 
     // ── Bank Details ─────────────────────────────────────────────────────────
     accountNumber: { type: String, required: true, trim: true },

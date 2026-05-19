@@ -8,6 +8,8 @@ import {
   processWithdrawalSchema,
   commissionSchema,
   rejectSchema,
+  createTierSchema,
+  updateTierSchema,
 } from "../validators/affiliateValidation.js";
 
 export default class AffiliateController {
@@ -165,6 +167,13 @@ export default class AffiliateController {
     });
   }
 
+  static async getAdminDashboardOverview(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await AffiliateService.getAdminDashboardOverview(req.query);
+      return [{ data: result }, "Admin dashboard overview fetched"];
+    });
+  }
+
   static async getAllAffiliates(req, res) {
     return handleApiRequest(req, res, async () => {
       const result = await AffiliateService.getAllAffiliates(req.query);
@@ -244,6 +253,49 @@ export default class AffiliateController {
         req.body,
       );
       return [{ data: result }, `Withdrawal ${req.body.action}d successfully`];
+    });
+  }
+
+  // ── TIERS ──────────────────────────────────────────────────────────────────
+
+  static async createTier(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { error } = createTierSchema.validate(req.body);
+      if (error) throw new ValidationError(error.details[0].message);
+
+      const result = await AffiliateService.createTier(req.body);
+      return [{ data: result }, "Tier created successfully", 201];
+    });
+  }
+
+  static async updateTier(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { error } = updateTierSchema.validate(req.body);
+      if (error) throw new ValidationError(error.details[0].message);
+
+      const result = await AffiliateService.updateTier(req.params.id, req.body);
+      return [{ data: result }, "Tier updated successfully"];
+    });
+  }
+
+  static async getAllTiers(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await AffiliateService.getAllTiers();
+      return [{ data: result }, "All tiers fetched"];
+    });
+  }
+
+  static async getActiveTiers(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await AffiliateService.getActiveTiers();
+      return [{ data: result }, "Active tiers fetched"];
+    });
+  }
+
+  static async deleteTier(req, res) {
+    return handleApiRequest(req, res, async () => {
+      await AffiliateService.deleteTier(req.params.id);
+      return [{}, "Tier deleted successfully"];
     });
   }
 }

@@ -51,6 +51,13 @@ export const registerAffiliateSchema = Joi.object({
     .messages({
       "string.pattern.base": "Invalid PAN number format (e.g. ABCDE1234F)",
     }),
+  adharNumber: Joi.string()
+    .pattern(/^\d{12}$/)
+    .required()
+    .messages({
+      "string.pattern.base": "Aadhaar number must be exactly 12 digits",
+      "any.required": "Aadhaar number is required",
+    }),
 
   // Bank
   accountNumber: Joi.string()
@@ -134,8 +141,29 @@ export const commissionSchema = Joi.object({
 });
 
 // ── Admin: reject affiliate ───────────────────────────────────────────────────
+// ── Admin: reject affiliate ───────────────────────────────────────────────────
 export const rejectSchema = Joi.object({
   reason: Joi.string().min(5).max(500).required().messages({
     "any.required": "Rejection reason is required",
   }),
+});
+
+// ── Admin: create tier ────────────────────────────────────────────────────────
+export const createTierSchema = Joi.object({
+  name: Joi.string().min(2).max(50).required(),
+  minSales: Joi.number().min(0).required(),
+  commissionAmount: Joi.number().min(0).required(),
+  benefits: Joi.array().items(Joi.string().trim()).optional(),
+  isActive: Joi.boolean().optional(),
+  themeColor: Joi.string().optional().allow(null, ""),
+});
+
+// ── Admin: update tier ────────────────────────────────────────────────────────
+export const updateTierSchema = Joi.object({
+  name: Joi.string().min(2).max(50).optional(),
+  minSales: Joi.number().min(0).optional(),
+  commissionAmount: Joi.number().min(0).optional(),
+  benefits: Joi.array().items(Joi.string().trim()).optional(),
+  isActive: Joi.boolean().optional(),
+  themeColor: Joi.string().optional().allow(null, ""),
 });

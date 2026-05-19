@@ -3,6 +3,7 @@ import affiliateModel from "../model/affiliate.model.js";
 import affiliateCommissionModel from "../model/affiliateCommission.model.js";
 import affiliateWithdrawalModel from "../model/affiliateWidraw.model.js";
 import affiliateClickModel from "../model/affiliateClick.model.js";
+import affiliateTierModel from "../model/affiliateTier.model.js";
 import userModel from "../model/user.model.js";
 import redisClient from "../config/redis.js";
 import jwt from "jsonwebtoken";
@@ -116,8 +117,10 @@ export default class AffiliateService {
     if (!user) throw new AppError("User not found", 404);
     if (user.disable) throw new AppError("Account is disabled", 403);
 
-    const panImage = files?.panImage?.[0]?.location;
-    if (!panImage) throw new AppError("PAN card image is required", 400);
+    const panImage   = files?.panImage?.[0]?.location;
+    const adharImage = files?.adharImage?.[0]?.location;
+    if (!panImage)   throw new AppError("PAN card image is required", 400);
+    if (!adharImage) throw new AppError("Aadhaar card image is required", 400);
 
     const existing = await affiliateModel.findOne({ userId });
     if (existing) {
@@ -136,21 +139,23 @@ export default class AffiliateService {
 
     const affiliate = await affiliateModel.create({
       userId,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      phone: payload.phone || user.number,
-      email: payload.email,
-      dob: payload.dob || null,
-      gender: payload.gender || null,
-      gstNumber: payload.gstNumber || null,
-      companyName: payload.companyName || null,
-      panNumber: payload.panNumber.toUpperCase(),
+      firstName:     payload.firstName,
+      lastName:      payload.lastName,
+      phone:         payload.phone || user.number,
+      email:         payload.email,
+      dob:           payload.dob           || null,
+      gender:        payload.gender        || null,
+      gstNumber:     payload.gstNumber     || null,
+      companyName:   payload.companyName   || null,
+      panNumber:     payload.panNumber.toUpperCase(),
       panImage,
+      adharNumber:   payload.adharNumber,
+      adharImage,
       accountNumber: payload.accountNumber,
-      ifscCode: payload.ifscCode.toUpperCase(),
+      ifscCode:      payload.ifscCode.toUpperCase(),
       accountHolder: payload.accountHolder,
-      upiId: payload.upiId || null,
-      dsmUserId: payload.dsmUserId || null,
+      upiId:         payload.upiId    || null,
+      dsmUserId:     payload.dsmUserId || null,
     });
 
     return affiliate;
@@ -528,12 +533,44 @@ export default class AffiliateService {
     // ❌ prevent self-referral
     if (affiliate.userId.toString() === buyerId.toString()) return null;
 
-    // ✅ ONLY admin-controlled commission
-    const percent = await getEffectiveCommission(affiliate);
+    let amount = 0;
+    let percent = null;
 
-    if (!percent || percent <= 0) return null;
+    // Check for manual override first
+    if (affiliate.commissionPercent !== null) {
+      percent = affiliate.commissionPercent;
+      amount = parseFloat(((orderAmount * percent) / 100).toFixed(2));
+    } else {
+      // Dynamic Tier Calculation
+      const startOfMonth = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1
+      );
+      
+      const currentMonthSales = await affiliateCommissionModel.countDocuments({
+        affiliateId: affiliate._id,
+        status: "credited",
+        createdAt: { $gte: startOfMonth },
+      });
 
-    const amount = parseFloat(((orderAmount * percent) / 100).toFixed(2));
+      const projectedSales = currentMonthSales + 1;
+
+      // Find highest active tier that matches the sales count
+      const activeTier = await affiliateTierModel
+        .findOne({ isActive: true, minSales: { $lte: projectedSales } })
+        .sort({ minSales: -1 })
+        .lean();
+
+      if (activeTier) {
+        amount = activeTier.commissionAmount;
+      } else {
+        // Fallback to global percentage if no tiers match
+        const global = await redisClient.get("affiliate:globalCommission");
+        percent = global ? parseFloat(global) : 0;
+        amount = parseFloat(((orderAmount * percent) / 100).toFixed(2));
+      }
+    }
 
     if (amount <= 0) return null;
 
@@ -735,6 +772,41 @@ export default class AffiliateService {
     return wd;
   }
 
+  // ── admin tier management ──────────────────────────────────────────────────
+
+  static async createTier(payload) {
+    const tier = await affiliateTierModel.create(payload);
+    return tier;
+  }
+
+  static async updateTier(tierId, payload) {
+    const tier = await affiliateTierModel.findByIdAndUpdate(tierId, payload, {
+      new: true,
+      runValidators: true,
+    });
+    if (!tier) throw new AppError("Tier not found", 404);
+    return tier;
+  }
+
+  static async getAllTiers() {
+    const tiers = await affiliateTierModel.find().sort({ minSales: 1 }).lean();
+    return tiers;
+  }
+
+  static async getActiveTiers() {
+    const tiers = await affiliateTierModel
+      .find({ isActive: true })
+      .sort({ minSales: 1 })
+      .lean();
+    return tiers;
+  }
+
+  static async deleteTier(tierId) {
+    const tier = await affiliateTierModel.findByIdAndDelete(tierId);
+    if (!tier) throw new AppError("Tier not found", 404);
+    return true;
+  }
+
   // ── admin dashboard stats ──────────────────────────────────────────────────
   static async getAdminStats() {
     const [
@@ -769,6 +841,141 @@ export default class AffiliateService {
       pendingWithdrawalAmount: pendingWithdrawals[0]?.total ?? 0,
       pendingWithdrawalCount: pendingWithdrawals[0]?.count ?? 0,
       globalCommission: parseFloat(globalCommission ?? "0"),
+    };
+  }
+
+  static async getAdminDashboardOverview({
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = {}) {
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate
+      ? new Date(startDate)
+      : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const periodDuration = end.getTime() - start.getTime();
+    const prevStart = new Date(start.getTime() - periodDuration);
+    const prevEnd = new Date(start.getTime() - 1); // 1 ms before start
+
+    const getPercentChange = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Number((((current - previous) / previous) * 100).toFixed(1));
+    };
+
+    const [
+      activeAffiliatesCurrent,
+      activeAffiliatesPrevious,
+      totalClicksCurrent,
+      totalClicksPrevious,
+      conversionsCurrent,
+      conversionsPrevious,
+      pendingWithdrawalsAmount,
+    ] = await Promise.all([
+      // Active affiliates up to the end date vs prev end date
+      affiliateModel.countDocuments({ status: "approved", createdAt: { $lte: end } }),
+      affiliateModel.countDocuments({ status: "approved", createdAt: { $lte: prevEnd } }),
+
+      // Clicks in current period vs prev period
+      affiliateClickModel.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+      affiliateClickModel.countDocuments({ createdAt: { $gte: prevStart, $lte: prevEnd } }),
+
+      // Conversions (credited commissions) in current period vs prev period
+      affiliateCommissionModel.countDocuments({ status: "credited", createdAt: { $gte: start, $lte: end } }),
+      affiliateCommissionModel.countDocuments({ status: "credited", createdAt: { $gte: prevStart, $lte: prevEnd } }),
+
+      // Pending payout amount (current total)
+      affiliateWithdrawalModel.aggregate([
+        { $match: { status: { $in: ["pending", "processing"] } } },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]),
+    ]);
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const topPerformersPipeline = [
+      {
+        $match: {
+          status: "credited",
+          createdAt: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $group: {
+          _id: "$affiliateId",
+          sales: { $sum: 1 },
+          earned: { $sum: "$commissionAmount" },
+        },
+      },
+      { $sort: { sales: -1, earned: -1 } },
+      {
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [
+            { $skip: skip },
+            { $limit: parseInt(limit) },
+            {
+              $lookup: {
+                from: "affiliates",
+                localField: "_id",
+                foreignField: "_id",
+                as: "affiliate",
+              },
+            },
+            { $unwind: "$affiliate" },
+            {
+              $project: {
+                _id: 1,
+                sales: 1,
+                earned: 1,
+                name: { $concat: ["$affiliate.firstName", " ", "$affiliate.lastName"] },
+                initials: {
+                  $concat: [
+                    { $substr: ["$affiliate.firstName", 0, 1] },
+                    { $substr: ["$affiliate.lastName", 0, 1] },
+                  ],
+                },
+                code: "$affiliate.affiliateCode",
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    const topPerformersResult = await affiliateCommissionModel.aggregate(topPerformersPipeline);
+    const topPerformersData = topPerformersResult[0].data || [];
+    const totalTopPerformers = topPerformersResult[0].metadata[0]?.total || 0;
+
+    return {
+      overview: {
+        activeAffiliates: {
+          count: activeAffiliatesCurrent,
+          percentChange: getPercentChange(activeAffiliatesCurrent, activeAffiliatesPrevious),
+        },
+        totalClicks: {
+          count: totalClicksCurrent,
+          percentChange: getPercentChange(totalClicksCurrent, totalClicksPrevious),
+        },
+        conversions: {
+          count: conversionsCurrent,
+          percentChange: getPercentChange(conversionsCurrent, conversionsPrevious),
+        },
+        pendingPayout: {
+          amount: pendingWithdrawalsAmount[0]?.total || 0,
+        },
+      },
+      topPerformers: {
+        data: topPerformersData.map((item, index) => ({
+          rank: skip + index + 1,
+          ...item
+        })),
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalTopPerformers,
+        totalPages: Math.ceil(totalTopPerformers / parseInt(limit)),
+      },
     };
   }
 }
