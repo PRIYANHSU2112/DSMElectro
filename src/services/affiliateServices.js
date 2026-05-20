@@ -682,7 +682,7 @@ export default class AffiliateService {
     affiliate.status = "approved";
     affiliate.affiliateCode = code;
     affiliate.rejectionReason = null;
-    await affiliate.save();
+    await affiliate.save({ validateBeforeSave: false });
 
     // TODO: send approval email / push notification
     return affiliate;
@@ -697,7 +697,7 @@ export default class AffiliateService {
 
     affiliate.status = "rejected";
     affiliate.rejectionReason = reason;
-    await affiliate.save();
+    await affiliate.save({ validateBeforeSave: false });
 
     // TODO: send rejection email / push notification
     return affiliate;

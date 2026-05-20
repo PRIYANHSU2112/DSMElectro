@@ -108,6 +108,36 @@ router.get(
   AffiliateController.getAllAffiliates,
 );
 
+// ── ADMIN TIER ROUTES ────────────────────────────────────────────────────────
+
+router.post(
+  "/affiliate/admin/tiers",
+  authUser,
+  adminMiddleware,
+  AffiliateController.createTier,
+);
+
+router.get(
+  "/affiliate/admin/tiers",
+  authUser,
+  adminMiddleware,
+  AffiliateController.getAllTiers,
+);
+
+router.patch(
+  "/affiliate/admin/tiers/:id",
+  authUser,
+  adminMiddleware,
+  AffiliateController.updateTier,
+);
+
+router.delete(
+  "/affiliate/admin/tiers/:id",
+  authUser,
+  adminMiddleware,
+  AffiliateController.deleteTier,
+);
+
 // single affiliate detail
 router.get(
   "/affiliate/admin/:id",
@@ -154,34 +184,5 @@ router.patch(
   AffiliateController.processWithdrawal,
 );
 
-// ── ADMIN TIER ROUTES ────────────────────────────────────────────────────────
-
-router.post(
-  "/affiliate/admin/tiers",
-  authUser,
-  adminMiddleware,
-  AffiliateController.createTier,
-);
-
-router.get(
-  "/affiliate/admin/tiers",
-  authUser,
-  adminMiddleware,
-  AffiliateController.getAllTiers,
-);
-
-router.patch(
-  "/affiliate/admin/tiers/:id",
-  authUser,
-  adminMiddleware,
-  AffiliateController.updateTier,
-);
-
-router.delete(
-  "/affiliate/admin/tiers/:id",
-  authUser,
-  adminMiddleware,
-  AffiliateController.deleteTier,
-);
 
 export default router;
