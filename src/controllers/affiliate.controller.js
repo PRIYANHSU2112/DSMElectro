@@ -169,6 +169,7 @@ export default class AffiliateController {
 
   static async getAdminDashboardOverview(req, res) {
     return handleApiRequest(req, res, async () => {
+      console.log("[DEBUG] getAdminDashboardOverview called, URL:", req.originalUrl);
       const result = await AffiliateService.getAdminDashboardOverview(req.query);
       return [{ data: result }, "Admin dashboard overview fetched"];
     });
@@ -183,6 +184,7 @@ export default class AffiliateController {
 
   static async getAffiliateById(req, res) {
     return handleApiRequest(req, res, async () => {
+      console.log("[DEBUG] getAffiliateById called, URL:", req.originalUrl, "id:", req.params.id);
       const result = await AffiliateService.getAffiliateById(req.params.id);
       return [{ data: result }, "Affiliate fetched"];
     });
