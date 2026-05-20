@@ -1037,10 +1037,33 @@ export default class ProductService {
 
   /**
    * GET NEW ARRIVAL PRODUCTS
+   * Supports: page, limit, search, category, brand, subCategory
+   * Returns: { products, pagination }
+   * Cached in Redis for 20 min per unique filter combination.
    */
   static async getNewArrivalProducts(query) {
-    const limitNumber = parseInt(query.limit) || 10;
-    const cacheKey = `products:new_arrivals:${limitNumber}`;
+    const { page, limit, search, category, brand, subCategory } = query;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const match = { disable: { $ne: true } };
+
+    if (search) {
+      match.name = { $regex: search, $options: "i" };
+    }
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
+      match.categoryId = new mongoose.Types.ObjectId(category);
+    }
+    if (brand && mongoose.Types.ObjectId.isValid(brand)) {
+      match.brandId = new mongoose.Types.ObjectId(brand);
+    }
+    if (subCategory && mongoose.Types.ObjectId.isValid(subCategory)) {
+      match.subCategoryId = new mongoose.Types.ObjectId(subCategory);
+    }
+
+    const cacheKey = `products:new_arrivals:${JSON.stringify({ match, pageNumber, limitNumber })}`;
 
     try {
       const cached = await redisClient.get(cacheKey);
@@ -1050,10 +1073,9 @@ export default class ProductService {
     }
 
     const pipeline = [
-      { $match: { disable: { $ne: true } } },
+      { $match: match },
       { $sort: { createdAt: -1 } },
-      { $limit: limitNumber },
-      
+
       {
         $lookup: {
           from: "variants",
@@ -1084,22 +1106,223 @@ export default class ProductService {
           discountAmount: "$variant.discountAmount",
         },
       },
+
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limitNumber },
+            { $project: { variants: 0, variant: 0 } },
+          ],
+          totalCount: [{ $count: "total" }],
+        },
+      },
       {
         $project: {
-          variants: 0,
-          variant: 0,
+          data: 1,
+          total: { $ifNull: [{ $arrayElemAt: ["$totalCount.total", 0] }, 0] },
         },
       },
     ];
 
-    const newArrivals = await productModel.aggregate(pipeline);
+    const result = await productModel.aggregate(pipeline);
+
+    const finalResult = {
+      products: result[0].data,
+      pagination: {
+        total: result[0].total,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: result[0].total > 0 ? Math.ceil(result[0].total / limitNumber) : 0,
+      },
+    };
 
     try {
-      await redisClient.setEx(cacheKey, 1200, JSON.stringify(newArrivals));
+      await redisClient.setEx(cacheKey, 1200, JSON.stringify(finalResult));
     } catch (err) {
       console.error("Redis set error:", err.message);
     }
 
-    return newArrivals;
+    return finalResult;
+  }
+
+  /**
+   * GET BEST SELLING PRODUCTS
+   * Ranks products by total unitsSold from non-cancelled/returned orders.
+   * Supports: page, limit, search, category, brand, subCategory
+   * Returns: { products, pagination }
+   * Cached in Redis for 30 min per unique filter combination.
+   */
+  static async getBestSellingProducts(query) {
+    const { page, limit, search, category, brand, subCategory } = query;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Build product filter match
+    const productMatch = { disable: { $ne: true } };
+
+    if (search) {
+      productMatch.name = { $regex: search, $options: "i" };
+    }
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
+      productMatch.categoryId = new mongoose.Types.ObjectId(category);
+    }
+    if (brand && mongoose.Types.ObjectId.isValid(brand)) {
+      productMatch.brandId = new mongoose.Types.ObjectId(brand);
+    }
+    if (subCategory && mongoose.Types.ObjectId.isValid(subCategory)) {
+      productMatch.subCategoryId = new mongoose.Types.ObjectId(subCategory);
+    }
+
+    const cacheKey = `products:best_selling:${JSON.stringify({ productMatch, pageNumber, limitNumber })}`;
+
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.error("Redis get error:", err.message);
+    }
+
+    // Step 1: Aggregate unitsSold from non-cancelled/returned orders
+    const excludedStatuses = ["CANCELLED", "RETURN_REQUESTED", "RETURN_APPROVED", "RETURNED"];
+
+    const salesPipeline = [
+      { $match: { status: { $nin: excludedStatuses } } },
+      { $unwind: "$product" },
+      {
+        $match: {
+          "product.itemType": "variant",
+          "product.status": { $nin: excludedStatuses },
+          "product.productId": { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$product.productId",
+          unitsSold: { $sum: "$product.quantity" },
+        },
+      },
+      { $sort: { unitsSold: -1 } },
+    ];
+
+    const orderModel = (await import("../model/order.model.js")).default;
+    const salesData = await orderModel.aggregate(salesPipeline);
+
+    if (!salesData.length) {
+      return { products: [], pagination: { total: 0, page: pageNumber, limit: limitNumber, totalPages: 0 } };
+    }
+
+    // Build salesMap for post-enrichment
+    const salesMap = new Map(salesData.map((s) => [s._id.toString(), s.unitsSold]));
+    const rankedProductIds = salesData.map((s) => s._id);
+
+    // Step 2: Match products against ranked IDs + apply filters, then paginate
+    const pipeline = [
+      {
+        $match: {
+          ...productMatch,
+          _id: { $in: rankedProductIds },
+        },
+      },
+
+      // Inject unitsSold from salesData via $reduce so sort is inside aggregation
+      {
+        $addFields: {
+          unitsSold: {
+            $reduce: {
+              input: salesData,
+              initialValue: 0,
+              in: {
+                $cond: [
+                  { $eq: ["$$this._id", "$_id"] },
+                  "$$this.unitsSold",
+                  "$$value",
+                ],
+              },
+            },
+          },
+        },
+      },
+
+      { $sort: { unitsSold: -1 } },
+
+      // Join cheapest active variant for pricing
+      {
+        $lookup: {
+          from: "variants",
+          let: { productId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$productId", "$$productId"] },
+                disable: { $ne: true },
+              },
+            },
+            { $sort: { finalPrice: 1 } },
+            { $limit: 1 },
+          ],
+          as: "variants",
+        },
+      },
+      {
+        $addFields: {
+          variant: { $arrayElemAt: ["$variants", 0] },
+        },
+      },
+      {
+        $addFields: {
+          price: "$variant.mrp",
+          finalPrice: "$variant.finalPrice",
+          discount: "$variant.discount",
+          discountAmount: "$variant.discountAmount",
+        },
+      },
+
+      // Paginate via $facet
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limitNumber },
+            { $project: { variants: 0, variant: 0 } },
+          ],
+          totalCount: [{ $count: "total" }],
+        },
+      },
+      {
+        $project: {
+          data: 1,
+          total: { $ifNull: [{ $arrayElemAt: ["$totalCount.total", 0] }, 0] },
+        },
+      },
+    ];
+
+    const result = await productModel.aggregate(pipeline);
+
+    // Re-attach exact unitsSold from map (overrides $reduce for accuracy)
+    const products = (result[0]?.data ?? []).map((p) => ({
+      ...p,
+      unitsSold: salesMap.get(p._id.toString()) ?? 0,
+    }));
+
+    const finalResult = {
+      products,
+      pagination: {
+        total: result[0]?.total ?? 0,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: (result[0]?.total ?? 0) > 0 ? Math.ceil(result[0].total / limitNumber) : 0,
+      },
+    };
+
+    try {
+      await redisClient.setEx(cacheKey, 1800, JSON.stringify(finalResult));
+    } catch (err) {
+      console.error("Redis set error:", err.message);
+    }
+
+    return finalResult;
   }
 }

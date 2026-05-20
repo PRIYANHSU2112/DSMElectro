@@ -93,4 +93,10 @@ router.get(
   ProductController.getNewArrivals,
 );
 
+router.get(
+  "/products/best-selling",
+  authUser,
+  ProductController.getBestSelling,
+);
+
 export default router;

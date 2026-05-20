@@ -169,6 +169,13 @@ static async setReferralCommission(req, res) {
     });
   }
 
+  static async getBestSelling(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await ProductService.getBestSellingProducts(req.query);
+      return [{ data: result }, "Best selling products fetched successfully", 200];
+    });
+  }
+
   // GET /products/dashboard
   // Query: ?sortBy=unitsSold|revenue  &categoryId=...  &limit=10
   static async getProductDashboard(req, res) {

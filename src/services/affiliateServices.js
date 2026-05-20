@@ -640,8 +640,25 @@ export default class AffiliateService {
       affiliateModel.countDocuments(filter),
     ]);
 
+    const enrichedData = await Promise.all(
+      data.map(async (affiliate) => {
+        const [clicks, conversions] = await Promise.all([
+          affiliateClickModel.countDocuments({ affiliateId: affiliate._id }),
+          affiliateCommissionModel.countDocuments({
+            affiliateId: affiliate._id,
+            status: "credited",
+          }),
+        ]);
+        return {
+          ...affiliate,
+          clicks,
+          conversions,
+        };
+      }),
+    );
+
     return {
-      data,
+      data: enrichedData,
       total,
       page: parseInt(page),
       limit: parseInt(limit),
@@ -668,7 +685,7 @@ export default class AffiliateService {
     const affiliate = await affiliateModel.findById(affiliateId);
     if (!affiliate) throw new AppError("Affiliate not found", 404);
     if (affiliate.status === "approved")
-      throw new AppError("Already approved", 400);
+      return affiliate;
 
     // generate collision-free referral code
     let code;
