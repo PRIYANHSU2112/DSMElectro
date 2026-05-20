@@ -87,4 +87,10 @@ router.get(
   ProductController.getTrendingProducts,
 );
 
+router.get(
+  "/products/new-arrivals",
+  authUser,
+  ProductController.getNewArrivals,
+);
+
 export default router;

@@ -1034,4 +1034,72 @@ export default class ProductService {
 
     return trendingProducts;
   }
+
+  /**
+   * GET NEW ARRIVAL PRODUCTS
+   */
+  static async getNewArrivalProducts(query) {
+    const limitNumber = parseInt(query.limit) || 10;
+    const cacheKey = `products:new_arrivals:${limitNumber}`;
+
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.error("Redis get error:", err.message);
+    }
+
+    const pipeline = [
+      { $match: { disable: { $ne: true } } },
+      { $sort: { createdAt: -1 } },
+      { $limit: limitNumber },
+      
+      {
+        $lookup: {
+          from: "variants",
+          let: { productId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$productId", "$$productId"] },
+                disable: { $ne: true },
+              },
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: 1 },
+          ],
+          as: "variants",
+        },
+      },
+      {
+        $addFields: {
+          variant: { $arrayElemAt: ["$variants", 0] },
+        },
+      },
+      {
+        $addFields: {
+          price: "$variant.mrp",
+          finalPrice: "$variant.finalPrice",
+          discount: "$variant.discount",
+          discountAmount: "$variant.discountAmount",
+        },
+      },
+      {
+        $project: {
+          variants: 0,
+          variant: 0,
+        },
+      },
+    ];
+
+    const newArrivals = await productModel.aggregate(pipeline);
+
+    try {
+      await redisClient.setEx(cacheKey, 1200, JSON.stringify(newArrivals));
+    } catch (err) {
+      console.error("Redis set error:", err.message);
+    }
+
+    return newArrivals;
+  }
 }

@@ -162,6 +162,13 @@ static async setReferralCommission(req, res) {
     });
   }
 
+  static async getNewArrivals(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await ProductService.getNewArrivalProducts(req.query);
+      return [{ data: result }, "New arrival products fetched successfully", 200];
+    });
+  }
+
   // GET /products/dashboard
   // Query: ?sortBy=unitsSold|revenue  &categoryId=...  &limit=10
   static async getProductDashboard(req, res) {

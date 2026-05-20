@@ -11,6 +11,7 @@ import { AppError } from "../utils/apiResponse.js";
 import productModel from "../model/product.model.js";
 import variantModel from "../model/variant.model.js";
 import comboModel from "../model/combo.model.js";
+import mongoose from "mongoose";
 
 // ─── private helpers ──────────────────────────────────────────────────────────
 
@@ -649,6 +650,9 @@ export default class AffiliateService {
   }
 
   static async getAffiliateById(affiliateId) {
+    if (!mongoose.Types.ObjectId.isValid(affiliateId)) {
+      throw new AppError("Invalid Affiliate ID format", 400);
+    }
     const affiliate = await affiliateModel
       .findById(affiliateId)
       .populate("userId", "firstName lastName email number")
@@ -658,6 +662,9 @@ export default class AffiliateService {
   }
 
   static async approveAffiliate(affiliateId) {
+    if (!mongoose.Types.ObjectId.isValid(affiliateId)) {
+      throw new AppError("Invalid Affiliate ID format", 400);
+    }
     const affiliate = await affiliateModel.findById(affiliateId);
     if (!affiliate) throw new AppError("Affiliate not found", 404);
     if (affiliate.status === "approved")
@@ -682,6 +689,9 @@ export default class AffiliateService {
   }
 
   static async rejectAffiliate(affiliateId, reason) {
+    if (!mongoose.Types.ObjectId.isValid(affiliateId)) {
+      throw new AppError("Invalid Affiliate ID format", 400);
+    }
     const affiliate = await affiliateModel.findById(affiliateId);
     if (!affiliate) throw new AppError("Affiliate not found", 404);
 
@@ -703,6 +713,9 @@ export default class AffiliateService {
   }
 
   static async setAffiliateCommission(affiliateId, percent) {
+    if (!mongoose.Types.ObjectId.isValid(affiliateId)) {
+      throw new AppError("Invalid Affiliate ID format", 400);
+    }
     const val = percent === null ? null : Number(percent);
     if (val !== null && (isNaN(val) || val < 0 || val > 100))
       throw new AppError("Commission must be between 0 and 100", 400);
@@ -747,6 +760,9 @@ export default class AffiliateService {
   }
 
   static async processWithdrawal(withdrawalId, { action, adminNote }) {
+    if (!mongoose.Types.ObjectId.isValid(withdrawalId)) {
+      throw new AppError("Invalid Withdrawal ID format", 400);
+    }
     const wd = await affiliateWithdrawalModel.findById(withdrawalId);
     if (!wd) throw new AppError("Withdrawal request not found", 404);
     if (wd.status !== "pending")
@@ -780,6 +796,9 @@ export default class AffiliateService {
   }
 
   static async updateTier(tierId, payload) {
+    if (!mongoose.Types.ObjectId.isValid(tierId)) {
+      throw new AppError("Invalid Tier ID format", 400);
+    }
     const tier = await affiliateTierModel.findByIdAndUpdate(tierId, payload, {
       new: true,
       runValidators: true,
@@ -802,6 +821,9 @@ export default class AffiliateService {
   }
 
   static async deleteTier(tierId) {
+    if (!mongoose.Types.ObjectId.isValid(tierId)) {
+      throw new AppError("Invalid Tier ID format", 400);
+    }
     const tier = await affiliateTierModel.findByIdAndDelete(tierId);
     if (!tier) throw new AppError("Tier not found", 404);
     return true;
