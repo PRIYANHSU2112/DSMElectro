@@ -48,6 +48,10 @@ const commissionSchema = new mongoose.Schema(
 
 commissionSchema.index({ affiliateId: 1, createdAt: -1 });
 commissionSchema.index({ affiliateId: 1, status: 1 });
+// Compound: supports monthly sales COUNT in recordCommission tier logic
+commissionSchema.index({ affiliateId: 1, status: 1, createdAt: 1 });
+// Compound: supports admin overview period queries
+commissionSchema.index({ status: 1, createdAt: 1 });
 commissionSchema.index({ orderId: 1 });
 commissionSchema.index({ buyerId: 1 });
 

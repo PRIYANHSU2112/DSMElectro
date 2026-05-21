@@ -39,5 +39,7 @@ const affiliateTierSchema = new mongoose.Schema(
 
 affiliateTierSchema.index({ minSales: 1 });
 affiliateTierSchema.index({ isActive: 1 });
+// Compound: supports findOne({ isActive, minSales: { $lte } }).sort({ minSales: -1 })
+affiliateTierSchema.index({ isActive: 1, minSales: 1 });
 
 export default mongoose.model("affiliateTier", affiliateTierSchema);

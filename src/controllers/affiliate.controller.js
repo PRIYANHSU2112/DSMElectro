@@ -300,4 +300,17 @@ export default class AffiliateController {
       return [{}, "Tier deleted successfully"];
     });
   }
+
+  // ── Referral Tracking Dashboard ────────────────────────────────────────────
+  static async getReferralTrackingDashboard(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { days = 14, page = 1, limit = 10 } = req.query;
+      const result = await AffiliateService.getReferralTrackingDashboard({
+        days:  parseInt(days)  || 14,
+        page:  parseInt(page)  || 1,
+        limit: parseInt(limit) || 10,
+      });
+      return [{ data: result }, "Referral tracking dashboard fetched"];
+    });
+  }
 }
