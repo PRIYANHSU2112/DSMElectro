@@ -189,4 +189,17 @@ static async setReferralCommission(req, res) {
       return [{ data: result }, "Product dashboard fetched successfully"];
     });
   }
+
+  // ── Related Products ───────────────────────────────────────────────────────
+  // GET /api/v1/products/related?categoryId=xxx&limit=10
+  // GET /api/v1/products/related?subCategoryId=xxx&limit=10
+  // GET /api/v1/products/related?categoryId=xxx&subCategoryId=xxx&limit=10
+  static async getRelatedProducts(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const { categoryId, subCategoryId, limit } = req.query;
+      const result = await ProductService.getRelatedProducts({ categoryId, subCategoryId, limit });
+      return [{ data: result }, "Related products fetched successfully"];
+    });
+  }
 }
+

@@ -1325,4 +1325,158 @@ export default class ProductService {
 
     return finalResult;
   }
+
+  // ── RELATED PRODUCTS ──────────────────────────────────────────────────────
+  /**
+   * getRelatedProducts({ categoryId, subCategoryId, limit })
+   *
+   * Caller passes categoryId and/or subCategoryId directly (from the
+   * product detail page). No extra DB lookup needed.
+   *
+   * STRATEGY:
+   *  1. subCategoryId given → fill up to `limit` from same sub-category
+   *  2. categoryId given    → top-up remaining slots from same category
+   *                           (excluding subCategoryId bucket to avoid duplicates)
+   *  3. Only subCategoryId  → results from sub-category only
+   *  4. Only categoryId     → results from category only
+   *
+   * CACHE KEYS (shared across all products in same category/sub-category):
+   *  "products:related:sub:<subCategoryId>:<limit>"  TTL 10 min
+   *  "products:related:cat:<categoryId>:<limit>"     TTL 10 min
+   *
+   * RESPONSE per product:
+   *  { _id, name, slug, icon, avgRating, totalRatings,
+   *    categoryId, subCategoryId, brandId,
+   *    variant: { _id, mrp, finalPrice, discount, discountAmount } }
+   */
+  static async getRelatedProducts({ categoryId, subCategoryId, limit } = {}) {
+    const lim = Math.min(parseInt(limit) || 10, 30); // cap at 30
+
+    // Validate: at least one ID must be provided
+    if (!categoryId && !subCategoryId) {
+      throw new AppError("Provide at least categoryId or subCategoryId", 400);
+    }
+
+    const catId    = categoryId    && mongoose.Types.ObjectId.isValid(categoryId)    ? categoryId    : null;
+    const subCatId = subCategoryId && mongoose.Types.ObjectId.isValid(subCategoryId) ? subCategoryId : null;
+
+    // ── Pipeline factory ──────────────────────────────────────────────────
+    // Builds aggregation: match → $sample → $lookup variant → project
+    const buildPipeline = (matchFilter, sampleSize) => [
+      {
+        $match: {
+          ...matchFilter,
+          disable: { $ne: true },
+        },
+      },
+      { $sample: { size: sampleSize } }, // random variety on every cache miss
+      {
+        $lookup: {
+          from: "variants",
+          let:  { pid: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr:   { $eq: ["$productId", "$$pid"] },
+                disable: { $ne: true },
+              },
+            },
+            { $sort: { finalPrice: 1 } }, // cheapest variant
+            { $limit: 1 },
+            {
+              $project: {
+                _id: 1, mrp: 1, finalPrice: 1,
+                discount: 1, discountAmount: 1,
+              },
+            },
+          ],
+          as: "variants",
+        },
+      },
+      { $match: { "variants.0": { $exists: true } } }, // must have at least 1 active variant
+      {
+        $project: {
+          name: 1, slug: 1, icon: 1,
+          avgRating: 1, totalRatings: 1,
+          categoryId: 1, subCategoryId: 1, brandId: 1,
+          variant: { $arrayElemAt: ["$variants", 0] },
+        },
+      },
+    ];
+
+    // ── BUCKET 1: Sub-category (most relevant) ────────────────────────────
+    let subCatProducts = [];
+
+    if (subCatId) {
+      const subKey = `products:related:sub:${subCatId}:${lim}`;
+      try {
+        const cached = await redisClient.get(subKey);
+        if (cached) {
+          subCatProducts = JSON.parse(cached);
+        } else {
+          subCatProducts = await productModel.aggregate(
+            buildPipeline(
+              { subCategoryId: new mongoose.Types.ObjectId(subCatId) },
+              lim * 3,
+            ),
+          );
+          subCatProducts = subCatProducts.slice(0, lim);
+          await redisClient.setex(subKey, 600, JSON.stringify(subCatProducts));
+        }
+      } catch (err) {
+        console.error("[related] sub-category error:", err.message);
+      }
+    }
+
+    // ── BUCKET 2: Category top-up (if quota not filled) ──────────────────
+    let catProducts = [];
+    const remaining = lim - subCatProducts.length;
+
+    if (remaining > 0 && catId) {
+      const alreadyIds = new Set(subCatProducts.map((p) => p._id.toString()));
+      const catKey     = `products:related:cat:${catId}:${lim}`;
+
+      try {
+        const cached = await redisClient.get(catKey);
+        if (cached) {
+          catProducts = JSON.parse(cached);
+        } else {
+          catProducts = await productModel.aggregate(
+            buildPipeline(
+              {
+                categoryId: new mongoose.Types.ObjectId(catId),
+                // Don't overlap with sub-category bucket
+                ...(subCatId && {
+                  subCategoryId: { $ne: new mongoose.Types.ObjectId(subCatId) },
+                }),
+              },
+              lim * 3,
+            ),
+          );
+          catProducts = catProducts.slice(0, lim);
+          await redisClient.setex(catKey, 600, JSON.stringify(catProducts));
+        }
+      } catch (err) {
+        console.error("[related] category error:", err.message);
+      }
+
+      // Filter out duplicates already in bucket 1
+      catProducts = catProducts
+        .filter((p) => !alreadyIds.has(p._id.toString()))
+        .slice(0, remaining);
+    }
+
+    return {
+      products: [...subCatProducts, ...catProducts],
+      meta: {
+        fromSubCategory: subCatProducts.length,
+        fromCategory:    catProducts.length,
+        total:           subCatProducts.length + catProducts.length,
+      },
+    };
+  }
 }
+
+
+
+

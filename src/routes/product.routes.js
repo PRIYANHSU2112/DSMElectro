@@ -27,6 +27,15 @@ router.put(
   ProductController.updateProduct,
 );
 
+// GET /api/v1/products/related?subCategoryId=xxx&limit=10
+// GET /api/v1/products/related?categoryId=xxx&limit=10
+// GET /api/v1/products/related?categoryId=xxx&subCategoryId=xxx&limit=10
+router.get(
+  "/products/related",
+  authUser,
+  ProductController.getRelatedProducts,
+);
+
 router.get(
   "/product/:id/with-variants",
   authUser,
