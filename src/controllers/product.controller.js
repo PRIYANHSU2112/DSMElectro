@@ -177,14 +177,18 @@ static async setReferralCommission(req, res) {
   }
 
   // GET /products/dashboard
-  // Query: ?sortBy=unitsSold|revenue  &categoryId=...  &limit=10
+  // Query: ?filter=2026  &sortBy=unitsSold|revenue  &categoryId=...  &limit=10
   static async getProductDashboard(req, res) {
     return handleApiRequest(req, res, async () => {
-      const { sortBy, categoryId, limit } = req.query;
+      const { sortBy, categoryId, limit, filter } = req.query;
+      // Import getDateBoundaries to use the same filter logic as main dashboard
+      const { getDateBoundaries } = await import("../services/dashboard.service.js");
+      const dates = getDateBoundaries(filter);
       const result = await ProductDashboardService.getProductDashboard({
         sortBy:     sortBy     || "unitsSold",
         categoryId: categoryId || null,
         limit:      limit      ? parseInt(limit, 10) : 10,
+        dates,
       });
       return [{ data: result }, "Product dashboard fetched successfully"];
     });

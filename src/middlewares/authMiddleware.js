@@ -20,6 +20,11 @@ export const authUser = async (req, res, next) => {
       return next(new AppError("Not authorized, no token", 401));
     }
 
+    // Reuse user object if already successfully fetched by optionalAuth
+    if (req.user) {
+      return next();
+    }
+
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // Optimize DB query by using lean() if possible, but let's just select only what's typically needed or exclude sensitive info.

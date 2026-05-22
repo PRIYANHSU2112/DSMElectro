@@ -35,11 +35,11 @@ export default class ProjectDashboardService {
       projectModel.countDocuments({ disable: { $ne: true } }),
 
       projectModel.countDocuments({
-        disable:   { $ne: true },
+        disable: { $ne: true },
         createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
       }),
       projectModel.countDocuments({
-        disable:   { $ne: true },
+        disable: { $ne: true },
         createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
       }),
 
@@ -53,8 +53,8 @@ export default class ProjectDashboardService {
         { $match: { disable: { $ne: true } } },
         {
           $group: {
-            _id:          null,
-            totalMrp:     { $sum: "$mrp" },
+            _id: null,
+            totalMrp: { $sum: "$mrp" },
             totalRevenue: { $sum: "$finalPrice" },
           },
         },
@@ -63,16 +63,16 @@ export default class ProjectDashboardService {
 
     return {
       totalProjects: {
-        count:  totalProjects,
+        count: totalProjects,
         change: pctChange(currentProjects, prevProjects),
       },
       byLevel: {
-        beginner:     beginnerCount,
+        beginner: beginnerCount,
         intermediate: intermediateCount,
-        advance:      advanceCount,
+        advance: advanceCount,
       },
-      disabled:    { count: disabledProjects },
-      catalogValue: Math.round(inventoryAgg[0]?.totalMrp     || 0),
+      disabled: { count: disabledProjects },
+      catalogValue: Math.round(inventoryAgg[0]?.totalMrp || 0),
       revenueValue: Math.round(inventoryAgg[0]?.totalRevenue || 0),
     };
   }
@@ -85,8 +85,8 @@ export default class ProjectDashboardService {
         { $match: { disable: { $ne: true }, updatedAt: { $gte: dates.currentStart, $lt: dates.currentEnd } } },
         {
           $group: {
-            _id:            null,
-            totalViews:     { $sum: "$totalViews" },
+            _id: null,
+            totalViews: { $sum: "$totalViews" },
             totalDownloads: { $sum: "$totalDownloads" },
           },
         },
@@ -95,8 +95,8 @@ export default class ProjectDashboardService {
         { $match: { disable: { $ne: true }, updatedAt: { $gte: dates.prevStart, $lt: dates.prevEnd } } },
         {
           $group: {
-            _id:            null,
-            totalViews:     { $sum: "$totalViews" },
+            _id: null,
+            totalViews: { $sum: "$totalViews" },
             totalDownloads: { $sum: "$totalDownloads" },
           },
         },
@@ -106,19 +106,19 @@ export default class ProjectDashboardService {
         { $match: { disable: { $ne: true } } },
         {
           $group: {
-            _id:            null,
-            totalViews:     { $sum: "$totalViews" },
+            _id: null,
+            totalViews: { $sum: "$totalViews" },
             totalDownloads: { $sum: "$totalDownloads" },
-            avgRating:      { $avg: "$rating" },
-            totalRatings:   { $sum: "$totalRatings" },
+            avgRating: { $avg: "$rating" },
+            totalRatings: { $sum: "$totalRatings" },
           },
         },
       ]),
     ]);
 
-    const cur   = currentAgg[0] || { totalViews: 0, totalDownloads: 0 };
-    const prev  = prevAgg[0]    || { totalViews: 0, totalDownloads: 0 };
-    const total = totalAgg[0]   || { totalViews: 0, totalDownloads: 0, avgRating: 0, totalRatings: 0 };
+    const cur = currentAgg[0] || { totalViews: 0, totalDownloads: 0 };
+    const prev = prevAgg[0] || { totalViews: 0, totalDownloads: 0 };
+    const total = totalAgg[0] || { totalViews: 0, totalDownloads: 0, avgRating: 0, totalRatings: 0 };
 
     // Rating stats for current period
     const [currentRatings, prevRatings] = await Promise.all([
@@ -132,23 +132,23 @@ export default class ProjectDashboardService {
 
     return {
       views: {
-        current:  cur.totalViews,
+        current: cur.totalViews,
         previous: prev.totalViews,
-        total:    total.totalViews,
-        change:   pctChange(cur.totalViews, prev.totalViews),
+        total: total.totalViews,
+        change: pctChange(cur.totalViews, prev.totalViews),
       },
       downloads: {
-        current:  cur.totalDownloads,
+        current: cur.totalDownloads,
         previous: prev.totalDownloads,
-        total:    total.totalDownloads,
-        change:   pctChange(cur.totalDownloads, prev.totalDownloads),
+        total: total.totalDownloads,
+        change: pctChange(cur.totalDownloads, prev.totalDownloads),
       },
       ratings: {
-        current:  currentRatings,
+        current: currentRatings,
         previous: prevRatings,
-        total:    total.totalRatings,
+        total: total.totalRatings,
         avgRating: parseFloat((total.avgRating || 0).toFixed(2)),
-        change:   pctChange(currentRatings, prevRatings),
+        change: pctChange(currentRatings, prevRatings),
       },
     };
   }
@@ -160,7 +160,7 @@ export default class ProjectDashboardService {
     return projectModel.aggregate([
       { $match: { disable: { $ne: true }, category: { $exists: true } } },
       { $group: { _id: "$category", count: { $sum: 1 } } },
-      { $sort:  { count: -1 } },
+      { $sort: { count: -1 } },
       { $limit: 8 },
       {
         $lookup: {
@@ -170,10 +170,10 @@ export default class ProjectDashboardService {
       { $unwind: { path: "$cat", preserveNullAndEmptyArrays: true } },
       {
         $project: {
-          _id:        0,
+          _id: 0,
           categoryId: "$_id",
-          name:       { $ifNull: ["$cat.name", "Uncategorised"] },
-          count:      1,
+          name: { $ifNull: ["$cat.name", "Uncategorised"] },
+          count: 1,
           percentage: {
             $round: [{ $multiply: [{ $divide: ["$count", total || 1] }, 100] }, 1],
           },
@@ -195,7 +195,7 @@ export default class ProjectDashboardService {
         .sort({ [sortField]: -1 })
         .limit(limit)
         .select("title icon category projectType mrp finalPrice discount totalViews totalDownloads rating totalRatings")
-        .populate("category",    "name")
+        .populate("category", "name")
         .populate("subCategory", "name")
         .lean(),
 
@@ -205,25 +205,25 @@ export default class ProjectDashboardService {
 
     // NOTE: views/downloads are cumulative fields on the model (no per-period tracking)
     // We compare against the global average as a proxy for relative performance
-    const globalAvgViews     = allProjects.reduce((s, p) => s + (p.totalViews     || 0), 0) / (allProjects.length || 1);
+    const globalAvgViews = allProjects.reduce((s, p) => s + (p.totalViews || 0), 0) / (allProjects.length || 1);
     const globalAvgDownloads = allProjects.reduce((s, p) => s + (p.totalDownloads || 0), 0) / (allProjects.length || 1);
 
     return currentTop.map((p, idx) => ({
-      rank:           idx + 1,
-      projectId:      p._id,
-      title:          p.title,
-      icon:           p.icon,
-      category:       p.category?.name || null,
-      projectType:    p.projectType,
-      mrp:            p.mrp,
-      finalPrice:     p.finalPrice,
-      discount:       p.discount,
-      totalViews:     p.totalViews,
+      rank: idx + 1,
+      projectId: p._id,
+      title: p.title,
+      icon: p.icon,
+      category: p.category?.name || null,
+      projectType: p.projectType,
+      mrp: p.mrp,
+      finalPrice: p.finalPrice,
+      discount: p.discount,
+      totalViews: p.totalViews,
       totalDownloads: p.totalDownloads,
-      avgRating:      p.rating,
-      totalRatings:   p.totalRatings,
+      avgRating: p.rating,
+      totalRatings: p.totalRatings,
       // relative % vs global average
-      viewsVsAvg:     pctChange(p.totalViews,     Math.round(globalAvgViews)),
+      viewsVsAvg: pctChange(p.totalViews, Math.round(globalAvgViews)),
       downloadsVsAvg: pctChange(p.totalDownloads, Math.round(globalAvgDownloads)),
     }));
   }
@@ -235,7 +235,7 @@ export default class ProjectDashboardService {
       .sort({ createdAt: -1 })
       .limit(limit)
       .select("title icon projectType mrp finalPrice discount rating totalRatings totalViews totalDownloads createdAt")
-      .populate("category",    "name")
+      .populate("category", "name")
       .populate("subCategory", "name")
       .lean();
   }
@@ -247,7 +247,7 @@ export default class ProjectDashboardService {
       .sort({ createdAt: -1 })
       .limit(limit)
       .populate("project", "title icon")
-      .populate("user",    "firstName lastName email")
+      .populate("user", "firstName lastName email")
       .select("rating review createdAt")
       .lean();
   }
@@ -277,24 +277,24 @@ export default class ProjectDashboardService {
     const result = {
       // ── KPI Cards ──
       cards: {
-        catalog:    catalogCards,
+        catalog: catalogCards,
         engagement: engagementCards,
       },
 
       // ── Summary row ──
       summary: {
-        totalProjects:   catalogCards.totalProjects.count,
-        projectChange:   catalogCards.totalProjects.change,
-        catalogValue:    catalogCards.catalogValue,
-        disabled:        catalogCards.disabled.count,
-        byLevel:         catalogCards.byLevel,
-        totalViews:      engagementCards.views.total,
-        viewsChange:     engagementCards.views.change,
-        totalDownloads:  engagementCards.downloads.total,
+        totalProjects: catalogCards.totalProjects.count,
+        projectChange: catalogCards.totalProjects.change,
+        catalogValue: catalogCards.catalogValue,
+        disabled: catalogCards.disabled.count,
+        byLevel: catalogCards.byLevel,
+        totalViews: engagementCards.views.total,
+        viewsChange: engagementCards.views.change,
+        totalDownloads: engagementCards.downloads.total,
         downloadsChange: engagementCards.downloads.change,
-        avgRating:       engagementCards.ratings.avgRating,
-        totalRatings:    engagementCards.ratings.total,
-        ratingsChange:   engagementCards.ratings.change,
+        avgRating: engagementCards.ratings.avgRating,
+        totalRatings: engagementCards.ratings.total,
+        ratingsChange: engagementCards.ratings.change,
       },
 
       // ── Category breakdown ──
@@ -303,8 +303,8 @@ export default class ProjectDashboardService {
       // ── Top performers (by downloads or views) ──
       topPerformers: {
         sortBy,
-        performers:  topPerformers,
-        topProject:  topPerformers[0] || null,   // hero card
+        performers: topPerformers,
+        topProject: topPerformers[0] || null,   // hero card
       },
 
       // ── Recent activity ──

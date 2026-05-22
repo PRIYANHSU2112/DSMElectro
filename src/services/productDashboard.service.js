@@ -42,46 +42,50 @@ export default class ProductDashboardService {
     const [
       totalProducts,
       trendingProducts,
-      thisWeekProducts,
-      lastWeekProducts,
+      currentPeriodProducts,
+      prevPeriodProducts,
       lowStockVariants,
       outOfStockVariants,
       inventoryAgg,
     ] = await Promise.all([
-      // Total active products
-      productModel.countDocuments({ disable: { $ne: true } }),
-
-      // Trending
-      productModel.countDocuments({ disable: { $ne: true }, trending: true }),
-
-      // Products added this week (for growth %)
+      // Total products in selected period
       productModel.countDocuments({
         disable: { $ne: true },
-        createdAt: { $gte: dates.thisWeekStart, $lte: dates.now },
+        createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
       }),
 
-      // Products added previous week
+      // Trending products in selected period
       productModel.countDocuments({
         disable: { $ne: true },
-        createdAt: {
-          $gte: new Date(dates.thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000),
-          $lt: dates.thisWeekStart,
-        },
+        trending: true,
+        createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
       }),
 
-      // Low stock (between 1 and threshold)
+      // Products added in current period
+      productModel.countDocuments({
+        disable: { $ne: true },
+        createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+      }),
+
+      // Products added in previous period
+      productModel.countDocuments({
+        disable: { $ne: true },
+        createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
+      }),
+
+      // Low stock — always real-time inventory state
       variantModel.countDocuments({
         disable: { $ne: true },
         stock: { $gt: 0, $lte: LOW_STOCK_THRESHOLD },
       }),
 
-      // Out of stock
+      // Out of stock — always real-time
       variantModel.countDocuments({
         disable: { $ne: true },
         stock: { $lte: 0 },
       }),
 
-      // Inventory value: SUM(mrp * stock) across all active variants
+      // Inventory value — always real-time
       variantModel.aggregate([
         { $match: { disable: { $ne: true }, stock: { $gt: 0 }, mrp: { $exists: true } } },
         { $group: { _id: null, totalValue: { $sum: { $multiply: ["$mrp", "$stock"] } } } },
@@ -90,14 +94,14 @@ export default class ProductDashboardService {
 
     const trendingChange = pctChange(
       trendingProducts,
-      Math.max(1, trendingProducts - 1) // relative movement kept simple
+      Math.max(1, trendingProducts - 1)
     );
 
     return {
       totalProducts: {
         count: totalProducts,
-        change: pctChange(thisWeekProducts, lastWeekProducts),
-        label: "this week",
+        change: pctChange(currentPeriodProducts, prevPeriodProducts),
+        label: "selected period",
       },
       trending: {
         count: trendingProducts,
@@ -184,19 +188,18 @@ export default class ProductDashboardService {
   // ── 4. TOP PERFORMERS — ranked by units sold, with MoM % change ──────────
   //  Supports filters: sortBy (unitsSold|revenue), categoryId, limit
   static async getTopPerformers({ sortBy = "unitsSold", categoryId, limit = 10 } = {}, dates) {
-    // Build order match — current month vs last month
     const baseMatch = {
       status: { $nin: ["CANCELLED", "RETURNED"] },
       "product.productId": { $exists: true },
     };
 
-    // Run two aggregations in parallel: current period + previous period
+    // Current period vs previous period (from filter)
     const [currentAgg, prevAgg] = await Promise.all([
       orderModel.aggregate([
         {
           $match: {
             ...baseMatch,
-            createdAt: { $gte: dates.thisMonthStart, $lte: dates.now },
+            createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
           },
         },
         { $unwind: "$product" },
@@ -212,7 +215,7 @@ export default class ProductDashboardService {
         {
           $match: {
             ...baseMatch,
-            createdAt: { $gte: dates.lastMonthStart, $lt: dates.lastMonthEnd },
+            createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
           },
         },
         { $unwind: "$product" },
@@ -306,14 +309,12 @@ export default class ProductDashboardService {
   // ══════════════════════════════════════════════════════════════════════════
   //  MAIN ORCHESTRATOR — runs everything in parallel, caches result
   // ══════════════════════════════════════════════════════════════════════════
-  static async getProductDashboard({ sortBy = "unitsSold", categoryId, limit = 10 } = {}) {
-    const cacheKey = `product:dashboard:${sortBy}:${categoryId || "all"}:${limit}`;
-    const TTL = 120; // 2 minutes
+  static async getProductDashboard({ sortBy = "unitsSold", categoryId, limit = 10, dates } = {}) {
+    const cacheKey = `product:dashboard:${sortBy}:${categoryId || "all"}:${limit}:${dates?.currentStart?.toISOString() || 'month'}`;
+    const TTL = 120;
 
     const cached = await cacheGet(cacheKey);
     if (cached) return cached;
-
-    const dates = getMonthBounds();
 
     const [overview, topCategories, outOfStock, topPerformers] = await Promise.all([
       ProductDashboardService.getOverviewCards(dates),

@@ -1,17 +1,7 @@
-import admin from "firebase-admin";
-import { createRequire } from "module";
+import admin from "../utils/firebase.js";
 import notificationModel from "../model/notification.model.js";
 import userModel from "../model/user.model.js";
 
-// ── Firebase init (safe — only once) ────────────────────────────────────────
-const require = createRequire(import.meta.url);
-
-if (!admin.apps.length) {
-  const serviceAccount = require("../../config/serviceAccount.json");
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-}
 
 // ── Notification messages per order status ───────────────────────────────────
 const ORDER_MESSAGES = {
@@ -215,4 +205,120 @@ export default class NotificationService {
   static async updateFcmToken(userId, fcmToken) {
     await userModel.findByIdAndUpdate(userId, { fcmToken });
   }
+
+  // ─── PUBLIC: get notifications for logged-in user (optimized) ─────────────
+  static async getMyNotifications(userId, { page = 1, limit = 10, type } = {}) {
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = { userId };
+    if (type) filter.type = type;
+
+    // Fetch primary notification data using compound index + lean()
+    const data = await notificationModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // Smart Count Bypass: Avoid a second round-trip if page 1 results fit entirely within the limit
+    let total;
+    if (pageNum === 1 && data.length < limitNum) {
+      total = data.length;
+    } else {
+      total = await notificationModel.countDocuments(filter);
+    }
+
+    // Redundant Write Elimination: Only trigger the background update if there are actual unseen items in this batch
+    const hasUnseen = data.some((n) => !n.seen);
+    if (hasUnseen) {
+      notificationModel.updateMany(
+        { userId, seen: false },
+        { $set: { seen: true } }
+      ).catch((err) => console.error("[NotificationService] Background seen update failed:", err.message));
+    }
+
+    return {
+      data,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNext: pageNum < Math.ceil(total / limitNum),
+        hasPrev: pageNum > 1,
+      },
+    };
+  }
+
+  // ─── PUBLIC: get unseen count for logged-in user (optimized) ──────────────
+  static async getUnseenCount(userId) {
+    const count = await notificationModel.countDocuments({
+      userId,
+      seen: false,
+    });
+    return { count };
+  }
+
+  // ─── PUBLIC: mark single notification as seen ──────────────────────────────
+  static async markSeen(notificationId, userId) {
+    const notification = await notificationModel.findOneAndUpdate(
+      { _id: notificationId, userId },
+      { $set: { seen: true } },
+      { new: true }
+    );
+    if (!notification) {
+      throw new Error("Notification not found");
+    }
+    return notification;
+  }
+
+  // ─── PUBLIC: mark ALL user's notifications as seen ────────────────────────
+  static async markAllSeen(userId) {
+    await notificationModel.updateMany(
+      { userId, seen: false },
+      { $set: { seen: true } }
+    );
+    return true;
+  }
+
+  // ─── PUBLIC: ADMIN: get all notifications (optimized pagination) ──────────
+  static async getAllNotifications({ page = 1, limit = 10, userId, type } = {}) {
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = {};
+    if (userId) filter.userId = userId;
+    if (type) filter.type = type;
+
+    const data = await notificationModel
+      .find(filter)
+      .populate("userId", "firstName lastName email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // Smart Count Bypass for Admin panel
+    let total;
+    if (pageNum === 1 && data.length < limitNum) {
+      total = data.length;
+    } else {
+      total = await notificationModel.countDocuments(filter);
+    }
+
+    return {
+      data,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    };
+  }
 }
+

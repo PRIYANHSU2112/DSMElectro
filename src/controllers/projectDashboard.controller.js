@@ -14,9 +14,9 @@ export default class ProjectDashboardController {
       const { filter, sortBy, categoryId, limit } = req.query;
       const dashboard = await ProjectDashboardService.getFullProjectDashboard({
         filter,
-        sortBy:     sortBy     || "downloads",
+        sortBy: sortBy || "downloads",
         categoryId: categoryId || null,
-        limit:      limit      ? parseInt(limit, 10) : 10,
+        limit: limit ? parseInt(limit, 10) : 10,
       });
       return [dashboard, "Project dashboard loaded successfully"];
     });
@@ -55,9 +55,9 @@ export default class ProjectDashboardController {
       const { filter, sortBy, categoryId, limit } = req.query;
       const performers = await ProjectDashboardService.getTopPerformersOnly({
         filter,
-        sortBy:     sortBy     || "downloads",
+        sortBy: sortBy || "downloads",
         categoryId: categoryId || null,
-        limit:      limit      ? parseInt(limit, 10) : 10,
+        limit: limit ? parseInt(limit, 10) : 10,
       });
       return [{ data: performers }, "Top performing projects loaded"];
     });
@@ -69,7 +69,7 @@ export default class ProjectDashboardController {
   static getRecentProjects = (req, res) =>
     handleApiRequest(req, res, async () => {
       const limit = parseInt(req.query.limit, 10) || 5;
-      const list  = await ProjectDashboardService.getRecentProjects(limit);
+      const list = await ProjectDashboardService.getRecentProjects(limit);
       return [{ data: list }, "Recent projects loaded"];
     });
 
@@ -80,7 +80,7 @@ export default class ProjectDashboardController {
   static getRecentRatings = (req, res) =>
     handleApiRequest(req, res, async () => {
       const limit = parseInt(req.query.limit, 10) || 5;
-      const list  = await ProjectDashboardService.getRecentRatings(limit);
+      const list = await ProjectDashboardService.getRecentRatings(limit);
       return [{ data: list }, "Recent project ratings loaded"];
     });
 }

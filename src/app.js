@@ -43,6 +43,7 @@ import projectDashboardRoutes from "./routes/projectDashboard.routes.js";
 import searchRoutes from "./routes/search.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import roleRoutes from "./routes/role.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 
 const app = express();
 
@@ -107,6 +108,7 @@ app.use("/api/v1", productDashboardRoutes);
 app.use("/api/v1", projectDashboardRoutes);
 app.use("/api/v1", ticketRoutes);
 app.use("/api/v1", roleRoutes);
+app.use("/api/v1", notificationRoutes);
 app.use(errorHandler);
 
 export default app;

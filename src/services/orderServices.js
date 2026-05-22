@@ -18,6 +18,7 @@ import CouponService from "../services/couponServices.js";
 import couponModel from "../model/coupon.model.js";
 import { calculateCouponDiscount } from "../utils/couponCalculator.js";
 import InvoiceService from "./invoiceServices.js";
+import NotificationService from "./notificationServices.js";
 
 /**
  * walletOption (when paymentMethod === "WALLET"):
@@ -442,6 +443,11 @@ export default class OrderService {
     await order.save();
     await OrderService._clearOrderCache(order.customerId);
 
+    // Send push & in-app status update notification to user asynchronously
+    NotificationService.notifyOrderStatusUpdate(order, status).catch((err) =>
+      console.error("[OrderService] Failed to send status update notification:", err.message)
+    );
+
     return order;
   }
 
@@ -523,6 +529,11 @@ export default class OrderService {
       session.endSession();
 
       await OrderService._clearOrderCache(userId);
+
+      // Send push & in-app cancellation notification to user asynchronously
+      NotificationService.notifyOrderStatusUpdate(order, "CANCELLED").catch((err) =>
+        console.error("[OrderService] Failed to send order cancellation notification:", err.message)
+      );
 
       // 🟢 Generate CANCELLATION invoice (background — after commit)
       InvoiceService.generateInvoice(order._id, "CANCELLATION")
