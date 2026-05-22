@@ -52,7 +52,21 @@ export const adminMiddleware = (req, res, next) => {
       return next(new AppError("Not authorized", 401));
     }
 
-    if (req.user.role?.name !== "Super Admin") {
+    const role = req.user.role;
+
+    // Debug: log role info to help diagnose populate issues
+    if (!role) {
+      console.error("[adminMiddleware] role is null/undefined for user:", req.user._id, "- populate may have failed or role document missing");
+      return next(new AppError("Admin access required", 403));
+    }
+
+    // Accept both exact name match AND isSystemRole flag as fallback
+    const isAdmin =
+      role.name === "Super Admin" ||
+      role.isSystemRole === true;
+
+    if (!isAdmin) {
+      console.error("[adminMiddleware] User role name:", JSON.stringify(role.name), "isSystemRole:", role.isSystemRole);
       return next(new AppError("Admin access required", 403));
     }
 
