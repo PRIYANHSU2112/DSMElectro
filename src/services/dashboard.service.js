@@ -86,10 +86,13 @@ export default class DashboardService {
 
     const [totalProducts, lowStockVariants, currentProducts, prevProducts] =
       await Promise.all([
-        // Total active SKUs (products)
-        productModel.countDocuments({ disable: { $ne: true } }),
+        // Total products added in selected period
+        productModel.countDocuments({
+          disable: { $ne: true },
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
 
-        // Low-stock variants
+        // Low-stock variants (current inventory state — always real-time)
         variantModel.countDocuments({
           disable: { $ne: true },
           stock: { $lte: LOW_STOCK_THRESHOLD, $gt: 0 },
@@ -105,8 +108,8 @@ export default class DashboardService {
       ]);
 
     return {
-      totalSKUs: totalProducts,
-      lowStock: lowStockVariants,
+      totalSKUs: totalProducts,       // products in selected period
+      lowStock: lowStockVariants,     // always real-time (inventory state)
       change: pctChange(currentProducts, prevProducts),
     };
   }
@@ -119,26 +122,33 @@ export default class DashboardService {
 
     const [activeFlashSales, activeCombos, prevFlash, currentFlash] =
       await Promise.all([
+        // Active flash sales right now (real-time state)
         flashSaleModel.countDocuments({
           isActive: true,
           startDate: { $lte: now },
           endDate: { $gte: now },
         }),
 
-        comboModel.countDocuments({ disable: { $ne: true } }),
+        // Combos created in selected period
+        comboModel.countDocuments({
+          disable: { $ne: true },
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
 
+        // Flash sales created in previous period
         flashSaleModel.countDocuments({
           createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
 
+        // Flash sales created in current period
         flashSaleModel.countDocuments({
           createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
         }),
       ]);
 
     return {
-      activeFlashSales,
-      activeCombos,
+      activeFlashSales,             // always real-time
+      activeCombos,                 // combos in selected period
       change: pctChange(currentFlash, prevFlash),
     };
   }
@@ -155,13 +165,14 @@ export default class DashboardService {
         orderModel.countDocuments({
           createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
-        orderModel.countDocuments({}),
+        // totalOrders = filtered by selected period (not all-time)
+        orderModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
       ]);
 
     return {
       pending: pendingOrders,
       today: todayOrders,
-      totalOrders,
+      totalOrders,        // now = orders in selected period
       thisWeek: currentOrders,
       change: pctChange(currentOrders, prevOrders),
     };
@@ -198,19 +209,8 @@ export default class DashboardService {
     const currentRevenue = currentRevResult[0]?.total || 0;
     const prevRevenue = prevRevResult[0]?.total || 0;
 
-    // Total all-time revenue
-    const [allTimeResult] = await orderModel.aggregate([
-      {
-        $match: {
-          status: { $nin: ["CANCELLED", "RETURNED"] },
-          paymentStatus: "PAID",
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$orderTotal" } } },
-    ]);
-
     return {
-      totalRevenue: allTimeResult?.total || 0,
+      totalRevenue: currentRevenue,   // revenue in selected period (filter-aware)
       thisMonth: currentRevenue,
       lastMonth: prevRevenue,
       change: pctChange(currentRevenue, prevRevenue),
@@ -221,21 +221,25 @@ export default class DashboardService {
   //  5. USER STATS
   // ──────────────────────────────────────────────────────────────────────────
   static async getUserStats(dates) {
-    const [totalUsers, activeUsers, newToday, currentUsers, prevUsers] =
+    const [totalUsers, newToday, currentUsers, prevUsers] =
       await Promise.all([
-        userModel.countDocuments({}),
-        userModel.countDocuments({ disable: { $ne: true } }),
+        // Users registered in selected period
+        userModel.countDocuments({
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
+        // New users today (always real-time)
         userModel.countDocuments({ createdAt: { $gte: dates.todayStart } }),
+        // Users in current period (for change %)
         userModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
+        // Users in previous period
         userModel.countDocuments({
           createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
         }),
       ]);
 
     return {
-      totalUsers,
-      activeUsers,
-      newToday,
+      totalUsers,           // users registered in selected period
+      newToday,             // always real-time
       change: pctChange(currentUsers, prevUsers),
     };
   }
@@ -246,13 +250,30 @@ export default class DashboardService {
   static async getAffiliateStats(dates) {
     const [totalAffiliates, activeAffiliates, pendingKYC, payoutsResult, currentAff, prevAff] =
       await Promise.all([
-        affiliateModel.countDocuments({}),
-        affiliateModel.countDocuments({ status: "approved" }),
-        affiliateModel.countDocuments({ status: "pending" }),
+        // Affiliates joined in selected period
+        affiliateModel.countDocuments({
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
+        // Approved affiliates in selected period
+        affiliateModel.countDocuments({
+          status: "approved",
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
+        // Pending KYC in selected period
+        affiliateModel.countDocuments({
+          status: "pending",
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
 
-        // Total payouts (totalWithdrawn sum)
-        affiliateModel.aggregate([
-          { $group: { _id: null, total: { $sum: "$totalWithdrawn" } } },
+        // Total payouts in selected period (commissions paid)
+        affiliateCommissionModel.aggregate([
+          {
+            $match: {
+              status: "paid",
+              createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
 
         affiliateModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
@@ -262,10 +283,10 @@ export default class DashboardService {
       ]);
 
     return {
-      totalAffiliates,
-      activeAffiliates,
-      pendingKYC,
-      totalPayouts: payoutsResult[0]?.total || 0,
+      totalAffiliates,          // joined in selected period
+      activeAffiliates,         // approved in selected period
+      pendingKYC,               // pending in selected period
+      totalPayouts: payoutsResult[0]?.total || 0,  // paid in selected period
       change: pctChange(currentAff, prevAff),
     };
   }
@@ -276,8 +297,15 @@ export default class DashboardService {
   static async getB2BStats(dates) {
     const [totalInquiries, unreadInquiries, currentB2B, prevB2B] =
       await Promise.all([
-        bulkInquiryModel.countDocuments({}),
-        bulkInquiryModel.countDocuments({ status: "pending" }),
+        // Inquiries in selected period
+        bulkInquiryModel.countDocuments({
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
+        // Pending/unread inquiries in selected period
+        bulkInquiryModel.countDocuments({
+          status: "pending",
+          createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+        }),
         bulkInquiryModel.countDocuments({ createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd } }),
         bulkInquiryModel.countDocuments({
           createdAt: { $gte: dates.prevStart, $lt: dates.prevEnd },
@@ -285,8 +313,8 @@ export default class DashboardService {
       ]);
 
     return {
-      totalInquiries,
-      unread: unreadInquiries,
+      totalInquiries,       // inquiries in selected period
+      unread: unreadInquiries,  // pending in selected period
       change: pctChange(currentB2B, prevB2B),
     };
   }
@@ -317,11 +345,13 @@ export default class DashboardService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  //  9. RECENT ORDERS (for chart / table in dashboard)
+  //  9. RECENT ORDERS (for table in dashboard)
   // ──────────────────────────────────────────────────────────────────────────
-  static async getRecentOrders(limitCount = 10) {
+  static async getRecentOrders(dates, limitCount = 10) {
     return orderModel
-      .find({})
+      .find({
+        createdAt: { $gte: dates.currentStart, $lt: dates.currentEnd },
+      })
       .sort({ createdAt: -1 })
       .limit(limitCount)
       .populate("customerId", "firstName lastName email number")
@@ -330,19 +360,18 @@ export default class DashboardService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  //  10. ANALYTICS CHART DATA (Revenue, Status, Top Products, Payment Split)
+  //  10. ANALYTICS CHART DATA (Revenue Trend, Status, Top Products, Payment Split)
   // ──────────────────────────────────────────────────────────────────────────
-  static async getRevenueChart(days = 30) {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
+  static async getRevenueChart(dates) {
+    const startDate = dates.currentStart;
+    const endDate   = dates.currentEnd;
 
     const [revenueTrend, orderStatusDistribution, paymentMethodSplit, topSellingProducts] = await Promise.all([
-      // 1. Revenue Trend
+      // 1. Revenue Trend — grouped by day within selected period
       orderModel.aggregate([
         {
           $match: {
-            createdAt: { $gte: startDate },
+            createdAt: { $gte: startDate, $lt: endDate },
             status: { $nin: ["CANCELLED", "RETURNED"] },
             paymentStatus: "PAID",
           },
@@ -367,10 +396,10 @@ export default class DashboardService {
         },
       ]),
 
-      // 2. Order Status Distribution
+      // 2. Order Status Distribution — within selected period
       orderModel.aggregate([
         {
-          $match: { createdAt: { $gte: startDate } }
+          $match: { createdAt: { $gte: startDate, $lt: endDate } }
         },
         {
           $group: {
@@ -387,10 +416,10 @@ export default class DashboardService {
         }
       ]),
 
-      // 3. Payment Method Split
+      // 3. Payment Method Split — within selected period
       orderModel.aggregate([
         {
-          $match: { createdAt: { $gte: startDate } }
+          $match: { createdAt: { $gte: startDate, $lt: endDate } }
         },
         {
           $group: {
@@ -407,11 +436,11 @@ export default class DashboardService {
         }
       ]),
 
-      // 4. Top Selling Products
+      // 4. Top Selling Products — within selected period
       orderModel.aggregate([
         {
           $match: {
-            createdAt: { $gte: startDate },
+            createdAt: { $gte: startDate, $lt: endDate },
             status: { $nin: ["CANCELLED", "RETURNED"] }
           }
         },
@@ -426,7 +455,7 @@ export default class DashboardService {
         { $limit: 10 },
         {
           $lookup: {
-            from: "products", // collection name for "product" model
+            from: "products",
             localField: "_id",
             foreignField: "_id",
             as: "productDetails"
@@ -455,19 +484,28 @@ export default class DashboardService {
   // ══════════════════════════════════════════════════════════════════════════
   //  MAIN: Orchestrate all stats in parallel with Redis caching
   // ══════════════════════════════════════════════════════════════════════════
-  static async getFullDashboard(filter) {
+  static async getFullDashboard(filter, skipCache = false) {
     const CACHE_KEY = `dashboard:admin:full:${filter || 'month'}`;
     const CACHE_TTL = 120; // 2 minutes
 
-    // Try cache first
-    try {
-      const cached = await redisClient.get(CACHE_KEY);
-      if (cached) return JSON.parse(cached);
-    } catch (err) {
-      // Redis down — continue without cache
-    }
-
+    // DEBUG: log what filter + dates are being used
     const dates = getDateBoundaries(filter);
+    console.log(`[DashboardService] filter="${filter}" skipCache=${skipCache}`);
+    console.log(`[DashboardService] currentStart=${dates.currentStart.toISOString()} currentEnd=${dates.currentEnd.toISOString()}`);
+    console.log(`[DashboardService] prevStart=${dates.prevStart.toISOString()} prevEnd=${dates.prevEnd.toISOString()}`);
+
+    // Try cache first (skip if nocache=1 was passed)
+    if (!skipCache) {
+      try {
+        const cached = await redisClient.get(CACHE_KEY);
+        if (cached) {
+          console.log(`[DashboardService] Returning CACHED response for key: ${CACHE_KEY}`);
+          return JSON.parse(cached);
+        }
+      } catch (err) {
+        // Redis down — continue without cache
+      }
+    }
 
     // Run ALL heavy computations in parallel
     const [
@@ -523,14 +561,23 @@ export default class DashboardService {
         pendingOrders: orders.pending,
       },
 
-  
+      // ── Debug info (remove in production) ──
+      _debug: {
+        applied_filter: filter || 'month (default)',
+        currentStart: dates.currentStart,
+        currentEnd: dates.currentEnd,
+        prevStart: dates.prevStart,
+        prevEnd: dates.prevEnd,
+      },
     };
 
     // Cache result
-    try {
-      await redisClient.setEx(CACHE_KEY, CACHE_TTL, JSON.stringify(dashboard));
-    } catch (err) {
-      // Redis down — skip caching
+    if (!skipCache) {
+      try {
+        await redisClient.setEx(CACHE_KEY, CACHE_TTL, JSON.stringify(dashboard));
+      } catch (err) {
+        // Redis down — skip caching
+      }
     }
 
     return dashboard;

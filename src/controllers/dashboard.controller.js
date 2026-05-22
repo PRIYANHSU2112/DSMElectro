@@ -8,8 +8,10 @@ export default class DashboardController {
    */
   static getFullDashboard = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const { filter } = req.query;
-      const dashboard = await DashboardService.getFullDashboard(filter);
+      const { filter, nocache } = req.query;
+      // DEBUG: confirm what filter is actually received
+      console.log(`[Dashboard] filter received: "${filter}" | nocache: ${!!nocache}`);
+      const dashboard = await DashboardService.getFullDashboard(filter, !!nocache);
       return [dashboard, "Dashboard loaded successfully"];
     });
 
@@ -48,22 +50,25 @@ export default class DashboardController {
     });
 
   /**
-   * GET /api/v1/dashboard/revenue-chart?days=30
+   * GET /api/v1/dashboard/revenue-chart?filter=2026
    */
   static getRevenueChart = (req, res) =>
     handleApiRequest(req, res, async () => {
-      const days = parseInt(req.query.days) || 30;
-      const chartData = await DashboardService.getRevenueChart(days);
+      const { filter } = req.query;
+      const dates = getDateBoundaries(filter);
+      const chartData = await DashboardService.getRevenueChart(dates);
       return [chartData, "Charts data loaded"];
     });
 
   /**
-   * GET /api/v1/dashboard/recent-orders?limit=10
+   * GET /api/v1/dashboard/recent-orders?filter=2026&limit=10
    */
   static getRecentOrders = (req, res) =>
     handleApiRequest(req, res, async () => {
+      const { filter } = req.query;
       const limit = parseInt(req.query.limit) || 10;
-      const orders = await DashboardService.getRecentOrders(limit);
+      const dates = getDateBoundaries(filter);
+      const orders = await DashboardService.getRecentOrders(dates, limit);
       return [{ orders }, "Recent orders loaded"];
     });
 }
