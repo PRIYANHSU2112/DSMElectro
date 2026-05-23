@@ -44,6 +44,7 @@ import searchRoutes from "./routes/search.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import roleRoutes from "./routes/role.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import membershipRoutes from "./routes/membership.routes.js";
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use("/api/v1", globalPermissionGuard);
 
 app.use("/api/v1", searchRoutes);
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/membership", membershipRoutes);
 app.use("/api/v1", categoryRoutes);
 app.use("/api/v1", countryRoutes);
 app.use("/api/v1", stateRoutes);

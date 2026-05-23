@@ -51,6 +51,23 @@ const transactionSchema = new mongoose.Schema(
       enum: ["TOPUP", "ORDER_PAYMENT", "REFUND", null],
       default: null,
     },
+
+    planId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MembershipPlan",
+      default: null,
+    },
+
+    paymentId: {
+      type: String,
+      default: null,
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "success", "failed"],
+      default: "pending",
+    },
   },
   { timestamps: true }
 );

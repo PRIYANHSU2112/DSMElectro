@@ -25,7 +25,7 @@ export const errorHandler = (err, req, res, next) => {
   }
 
   //  Default fallback
-  res.status(error.statusCode || 500).json({
+  res.status(error.statusCode || error.status || 500).json({
     success: false,
     message: error.message || "Internal Server Error",
   });

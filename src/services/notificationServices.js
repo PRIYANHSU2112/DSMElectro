@@ -167,8 +167,36 @@ export default class NotificationService {
 
   // ─── PUBLIC: broadcast to all users (admin-triggered) ─────────────────────
   static async sendToAllUsers({ title, message, type = "GENERAL" }) {
+    // Dynamically find the User role, or exclude admin roles to find regular users.
+    // This avoids casting errors with the String "USER" against the ObjectId field.
+    const roleModel = userModel.db.model("Role");
+    const userRole = await roleModel.findOne({ name: "User" }).lean();
+
+    let query = { disable: { $ne: true } };
+    if (userRole) {
+      // Include users with the "User" role, or users who have no role assigned
+      query.$or = [
+        { role: userRole._id },
+        { role: { $exists: false } },
+        { role: null }
+      ];
+    } else {
+      // Exclude admin/system roles
+      const adminRoles = await roleModel.find({
+        $or: [
+          { name: "Super Admin" },
+          { isSystemRole: true }
+        ]
+      }).select("_id").lean();
+
+      const adminIds = adminRoles.map(r => r._id);
+      if (adminIds.length > 0) {
+        query.role = { $nin: adminIds };
+      }
+    }
+
     const users = await userModel
-      .find({ role: "USER", disable: { $ne: true } })
+      .find(query)
       .select("_id fcmToken")
       .lean();
 
