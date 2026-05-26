@@ -77,6 +77,13 @@ router.patch(
   ProductController.setReferralCommission,
 );
 
+router.patch(
+  "/product/:id/trending",
+  authUser,
+  adminMiddleware,
+  ProductController.toggleTrending,
+);
+
 router.get(
   "/products/related/cart",
   authUser,

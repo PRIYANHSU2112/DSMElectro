@@ -205,5 +205,15 @@ static async setReferralCommission(req, res) {
       return [{ data: result }, "Related products fetched successfully"];
     });
   }
+
+  static async toggleTrending(req, res) {
+    return handleApiRequest(req, res, async () => {
+      const result = await ProductService.toggleTrending(
+        req.params.id,
+        req.body.trending
+      );
+      return [{ data: result }, "Product trending status updated successfully"];
+    });
+  }
 }
 

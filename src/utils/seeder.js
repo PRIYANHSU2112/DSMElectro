@@ -6,10 +6,10 @@ import logger from "./logger.js";
 export const seedRoles = async () => {
   try {
     // 1. Seed Super Admin Role
-    const superAdminRole = await roleModel.findOne({ name: SYSTEM_ROLES.SUPER_ADMIN });
+    let superAdminRole = await roleModel.findOne({ name: SYSTEM_ROLES.SUPER_ADMIN });
 
     if (!superAdminRole) {
-      await roleModel.create({
+      superAdminRole = await roleModel.create({
         name: SYSTEM_ROLES.SUPER_ADMIN,
         permissions: PERMISSIONS,
         isSystemRole: true,
@@ -21,56 +21,80 @@ export const seedRoles = async () => {
       await superAdminRole.save();
     }
 
-    // // 2. Seed Regular User Role
-    // const userRole = await roleModel.findOne({ name: SYSTEM_ROLES.USER });
-    // if (!userRole) {
-    //   await roleModel.create({
-    //     name: SYSTEM_ROLES.USER,
-    //     permissions: [],
-    //     isSystemRole: true,
-    //     description: "Default customer role",
-    //   });
-    //   logger.info("User role seeded successfully");
-    // }
+    // 2. Seed Regular User Role
+    let userRole = await roleModel.findOne({ name: SYSTEM_ROLES.USER });
+    if (!userRole) {
+      userRole = await roleModel.create({
+        name: SYSTEM_ROLES.USER,
+        permissions: [],
+        isSystemRole: true,
+        description: "Default customer role",
+      });
+      logger.info("User role seeded successfully");
+    }
 
-    // // 3. MIGRATIONS
-    // const latestSuperAdmin = await roleModel.findOne({ name: SYSTEM_ROLES.SUPER_ADMIN });
-    // const latestUserRole = await roleModel.findOne({ name: SYSTEM_ROLES.USER });
+    // 3. Seed Affiliate Role
+    let affiliateRole = await roleModel.findOne({ name: "AFFILIATE" });
+    if (!affiliateRole) {
+      affiliateRole = await roleModel.create({
+        name: "AFFILIATE",
+        permissions: [],
+        isSystemRole: true,
+        description: "Affiliate partner role",
+      });
+      logger.info("Affiliate role seeded successfully");
+    }
 
-    // if (latestSuperAdmin) {
-    //   const result = await userModel.updateMany(
-    //     { 
-    //       $or: [
-    //         { role: "ADMIN" },
-    //         { role: "admin" },
-    //         { email: "admin@admin.com" }
-    //       ] 
-    //     },
-    //     { $set: { role: latestSuperAdmin._id } }
-    //   );
-    //   if (result.modifiedCount > 0) {
-    //     logger.info(`Migrated ${result.modifiedCount} legacy admins to Super Admin role.`);
-    //   }
-    // }
+    // 4. Run database migrations to fix legacy string roles
+    const rawUserCollection = userModel.collection;
 
-    // if (latestUserRole) {
-    //   const result = await userModel.updateMany(
-    //     { 
-    //       $or: [
-    //         { role: "USER" },
-    //         { role: "user" },
-    //         { role: { $exists: false } },
-    //         { role: null }
-    //       ] 
-    //     },
-    //     { $set: { role: latestUserRole._id }, $unset: { permissions: "" } }
-    //   );
-    //   if (result.modifiedCount > 0) {
-    //     logger.info(`Migrated ${result.modifiedCount} legacy users to User role.`);
-    //   }
-    // }
+    // Migrate Admin users to Super Admin Role ObjectId
+    const adminMigration = await rawUserCollection.updateMany(
+      { 
+        $or: [
+          { role: "ADMIN" },
+          { role: "admin" },
+          { role: "Super Admin" },
+          { email: "admin@admin.com" }
+        ] 
+      },
+      { $set: { role: superAdminRole._id } }
+    );
+    if (adminMigration.modifiedCount > 0) {
+      logger.info(`Migrated ${adminMigration.modifiedCount} legacy admins to Super Admin role.`);
+    }
+
+    // Migrate Affiliate users to Affiliate Role ObjectId
+    const affiliateMigration = await rawUserCollection.updateMany(
+      { 
+        $or: [
+          { role: "AFFILIATE" },
+          { role: "affiliate" }
+        ] 
+      },
+      { $set: { role: affiliateRole._id } }
+    );
+    if (affiliateMigration.modifiedCount > 0) {
+      logger.info(`Migrated ${affiliateMigration.modifiedCount} legacy affiliates to Affiliate role.`);
+    }
+
+    // Migrate customer users to User Role ObjectId
+    const userMigration = await rawUserCollection.updateMany(
+      { 
+        $or: [
+          { role: "USER" },
+          { role: "user" },
+          { role: { $exists: false } },
+          { role: null }
+        ] 
+      },
+      { $set: { role: userRole._id } }
+    );
+    if (userMigration.modifiedCount > 0) {
+      logger.info(`Migrated ${userMigration.modifiedCount} legacy users to User role.`);
+    }
 
   } catch (error) {
-    logger.error("Error seeding roles: " + error.message);
+    logger.error("Error seeding roles and migrating users: " + error.message);
   }
 };

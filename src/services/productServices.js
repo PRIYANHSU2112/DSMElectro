@@ -829,8 +829,25 @@ export default class ProductService {
    * GET TRENDING PRODUCTS (5-Signal Algorithm)
    */
   static async getTrendingProducts(query) {
-    const limitNumber = parseInt(query.limit) || 10;
-    const cacheKey = `products:trending:algorithmic:${limitNumber}`;
+    const { category, subCategory, brand, limit } = query;
+    const limitNumber = parseInt(limit) || 10;
+
+    const match = { 
+      disable: { $ne: true },
+      trending: true 
+    };
+
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
+      match.categoryId = new mongoose.Types.ObjectId(category);
+    }
+    if (brand && mongoose.Types.ObjectId.isValid(brand)) {
+      match.brandId = new mongoose.Types.ObjectId(brand);
+    }
+    if (subCategory && mongoose.Types.ObjectId.isValid(subCategory)) {
+      match.subCategoryId = new mongoose.Types.ObjectId(subCategory);
+    }
+
+    const cacheKey = `products:trending:${JSON.stringify({ match, limitNumber })}`;
 
     try {
       const cached = await redisClient.get(cacheKey);
@@ -840,7 +857,7 @@ export default class ProductService {
     }
 
     const pipeline = [
-      { $match: { disable: { $ne: true } } },
+      { $match: match },
       
       // Calculate 5-Signal Score
       {
@@ -961,18 +978,13 @@ export default class ProductService {
         }
       },
       
-      // Calculate Total Score (with manual override boost)
+      // Calculate Total Score
       {
         $addFields: {
           trendingScore: {
-            $add: [
-              {
-                $subtract: [
-                  { $add: ["$salesScore", "$viewScore", "$searchScore", "$cartScore"] },
-                  "$returnPenalty"
-                ]
-              },
-              { $cond: [{ $eq: ["$trending", true] }, 50, 0] } // 50 points boost if admin forced trending
+            $subtract: [
+              { $add: ["$salesScore", "$viewScore", "$searchScore", "$cartScore"] },
+              "$returnPenalty"
             ]
           }
         }
@@ -1473,6 +1485,35 @@ export default class ProductService {
         fromCategory:    catProducts.length,
         total:           subCatProducts.length + catProducts.length,
       },
+    };
+  }
+
+  static async toggleTrending(productId, trendingValue) {
+    const product = await productModel.findById(productId);
+    if (!product) throw new AppError("Product not found", 404);
+
+    const nextVal = typeof trendingValue === "boolean" ? trendingValue : !product.trending;
+    
+    product.trending = nextVal;
+    await product.save();
+
+    // Bust redis caches
+    try {
+      const keys = await redisClient.keys("products:trending:*");
+      const homeKeys = await redisClient.keys("home:data:*");
+      const allKeys = [`product:${productId}`, "products:list", ...keys, ...homeKeys];
+      
+      if (allKeys.length) {
+        await redisClient.del(...allKeys);
+      }
+    } catch (err) {
+      console.error("Failed to bust redis keys on trending toggle:", err.message);
+    }
+
+    return {
+      _id: product._id,
+      name: product.name,
+      trending: product.trending,
     };
   }
 }

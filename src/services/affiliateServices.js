@@ -5,6 +5,7 @@ import affiliateWithdrawalModel from "../model/affiliateWidraw.model.js";
 import affiliateClickModel from "../model/affiliateClick.model.js";
 import affiliateTierModel from "../model/affiliateTier.model.js";
 import userModel from "../model/user.model.js";
+import roleModel from "../model/role.model.js";
 import redisClient from "../config/redis.js";
 import jwt from "jsonwebtoken";
 import { AppError } from "../utils/apiResponse.js";
@@ -155,9 +156,21 @@ export default class AffiliateService {
     if (new Date() > user.otp.expiresAt) throw new AppError("OTP has expired. Please request again.", 400);
     if (user.otp.code !== otp) throw new AppError("Invalid OTP", 400);
 
+    let affiliateRole = await roleModel.findOne({ name: "AFFILIATE" });
+    if (!affiliateRole) {
+      affiliateRole = await roleModel.create({
+        name: "AFFILIATE",
+        description: "Affiliate role with basic permissions",
+        permissions: [],
+      });
+    }
+
     user.otp = { code: null, expiresAt: null };
-    if (user.role !== "AFFILIATE") user.role = "AFFILIATE";
+    if (!user.role || user.role.toString() !== affiliateRole._id.toString()) {
+      user.role = affiliateRole._id;
+    }
     await user.save();
+    await user.populate("role");
 
     const token = jwt.sign(
       { id: user._id, role: user.role },

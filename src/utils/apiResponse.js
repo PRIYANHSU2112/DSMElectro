@@ -7,7 +7,18 @@ export class AppError extends Error {
     super(message);
     this.name = "AppError";
     this.status = status;
-    this.code = code;
+    
+    if (code === "INTERNAL_ERROR") {
+      if (status === 400) this.code = "BAD_REQUEST";
+      else if (status === 401) this.code = "UNAUTHORIZED";
+      else if (status === 403) this.code = "FORBIDDEN";
+      else if (status === 404) this.code = "NOT_FOUND";
+      else if (status === 409) this.code = "CONFLICT";
+      else this.code = code;
+    } else {
+      this.code = code;
+    }
+    
     this.details = details;
 
     Error.captureStackTrace(this, this.constructor);
@@ -84,7 +95,39 @@ export const apiResponse = new ResponseBuilder();
 //   Global Error Handler
 
 export function handleError(res, error) {
-  logger.error(error);
+  let status = error.status || 500;
+  let code = error.code || "INTERNAL_ERROR";
+  let message = error.message;
+
+  if (error instanceof AppError) {
+    status = error.status;
+    code = error.code;
+  } else if (error instanceof SyntaxError) {
+    status = 400;
+    code = "SYNTAX_ERROR";
+    message = "Invalid JSON format";
+  } else if (error.code === 11000) {
+    status = 409;
+    code = "DUPLICATE_ENTRY";
+  } else if (error.name === "ValidationError") {
+    status = 400;
+    code = "VALIDATION_ERROR";
+  } else if (error.name === "CastError") {
+    status = 400;
+    code = "INVALID_ID";
+  }
+
+  if (status >= 500) {
+    logger.error(error);
+  } else {
+    logger.warn({
+      message: message,
+      status: status,
+      code: code,
+      url: res.req?.originalUrl,
+      userId: res.req?.user?._id,
+    });
+  }
 
   if (error instanceof AppError) {
     return apiResponse.error(res, error.message, {

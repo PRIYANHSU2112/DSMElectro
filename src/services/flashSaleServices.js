@@ -90,6 +90,36 @@ async function applyComboDiscount(comboIds, discountType, discountValue) {
   if (bulkOps.length) await comboModel.bulkWrite(bulkOps);
 }
 
+async function resetVariantDiscount(variantIds, productIds) {
+  const filter = {};
+  if (variantIds.length && productIds.length) {
+    filter.$or = [{ _id: { $in: variantIds } }, { productId: { $in: productIds } }];
+  } else if (variantIds.length) {
+    filter._id = { $in: variantIds };
+  } else if (productIds.length) {
+    filter.productId = { $in: productIds };
+  } else {
+    return;
+  }
+
+  const variants = await variantModel.find(filter).lean();
+  const bulkOps = variants.map((v) => ({
+    updateOne: {
+      filter: { _id: v._id },
+      update: {
+        $set: {
+          flashSale: false,
+          discount: 0,
+          discountAmount: 0,
+          finalPrice: v.mrp ?? 0,
+        },
+      },
+    },
+  }));
+
+  if (bulkOps.length) await variantModel.bulkWrite(bulkOps);
+}
+
 async function resetComboDiscount(comboIds) {
   const combos = await comboModel.find({ _id: { $in: comboIds } }, "_id totalMrp").lean();
   const bulkOps = combos.map((c) => ({
@@ -107,6 +137,34 @@ async function resetComboDiscount(comboIds) {
 //  Service
 // ─────────────────────────────────────────────────────────────────────────────
 export default class FlashSaleService {
+
+  static async deactivateSales(expiredSales) {
+    if (!expiredSales || !expiredSales.length) return;
+
+    const fsProductIds = new Set();
+    const fsVariantIds = new Set();
+    const fsComboIds = new Set();
+
+    expiredSales.forEach((sale) => {
+      sale.products?.forEach((id) => fsProductIds.add(id.toString()));
+      sale.variants?.forEach((id) => fsVariantIds.add(id.toString()));
+      sale.combos?.forEach((id) => fsComboIds.add(id.toString()));
+    });
+
+    const finalProductIds = [...fsProductIds];
+    const finalVariantIds = [...fsVariantIds];
+    const finalComboIds = [...fsComboIds];
+
+    await Promise.all([
+      finalProductIds.length && productModel.updateMany({ _id: { $in: finalProductIds } }, { $set: { flashSale: false } }),
+      (finalVariantIds.length || finalProductIds.length) && resetVariantDiscount(finalVariantIds, finalProductIds),
+      finalComboIds.length   && resetComboDiscount(finalComboIds),
+      flashSaleModel.updateMany({ _id: { $in: expiredSales.map((s) => s._id) } }, { $set: { isActive: false } }),
+    ].filter(Boolean));
+
+    await clearFlashCache();
+    console.log(`[LAZY CLEANUP] Deactivated ${expiredSales.length} expired flash sales.`);
+  }
 
   // ── CREATE ──────────────────────────────────────────────────────────────────
   static async create(payload) {
@@ -128,10 +186,17 @@ export default class FlashSaleService {
       if (clash) throw new AppError("One or more combos are already in an active flash sale", 400);
     }
 
+    let parentProductIds = [];
+    if (variantIds.length) {
+      const parentVariants = await variantModel.find({ _id: { $in: variantIds } }).select("productId").lean();
+      parentProductIds = parentVariants.map(v => v.productId).filter(Boolean);
+    }
+    const allProductIdsToUpdate = [...new Set([...productIds.map(String), ...parentProductIds.map(String)])];
+
     const sale = await flashSaleModel.create(payload);
 
     await Promise.all([
-      productIds.length && productModel.updateMany({ _id: { $in: productIds } }, { $set: { flashSale: true } }),
+      allProductIdsToUpdate.length && productModel.updateMany({ _id: { $in: allProductIdsToUpdate } }, { $set: { flashSale: true } }),
       variantIds.length && variantModel.updateMany({ _id: { $in: variantIds } }, { $set: { flashSale: true } }),
     ].filter(Boolean));
 
@@ -191,6 +256,12 @@ export default class FlashSaleService {
       if (clash) throw new AppError("One or more variants are already in an active flash sale", 400);
       sale.variants.push(...newVariants);
       await variantModel.updateMany({ _id: { $in: newVariants } }, { $set: { flashSale: true } });
+
+      const parentVariants = await variantModel.find({ _id: { $in: newVariants } }).select("productId").lean();
+      const parentProductIds = parentVariants.map(v => v.productId).filter(Boolean);
+      if (parentProductIds.length) {
+        await productModel.updateMany({ _id: { $in: parentProductIds } }, { $set: { flashSale: true } });
+      }
     }
     if (newCombos.length) {
       const clash = await comboModel.findOne({ _id: { $in: newCombos }, flashSale: true });
@@ -224,7 +295,7 @@ export default class FlashSaleService {
 
     await Promise.all([
       rmProducts.length && productModel.updateMany({ _id: { $in: rmProducts } }, { $set: { flashSale: false } }),
-      rmVariants.length && variantModel.updateMany({ _id: { $in: rmVariants } }, { $set: { flashSale: false } }),
+      (rmVariants.length || rmProducts.length) && resetVariantDiscount(rmVariants, rmProducts),
       rmCombos.length   && resetComboDiscount(rmCombos),
     ].filter(Boolean));
 
@@ -243,7 +314,7 @@ export default class FlashSaleService {
     if (becomingInactive) {
       await Promise.all([
         sale.products.length && productModel.updateMany({ _id: { $in: sale.products } }, { $set: { flashSale: false } }),
-        sale.variants.length && variantModel.updateMany({ _id: { $in: sale.variants } }, { $set: { flashSale: false } }),
+        (sale.variants.length || sale.products.length) && resetVariantDiscount(sale.variants, sale.products),
         sale.combos.length   && resetComboDiscount(sale.combos),
       ].filter(Boolean));
     } else {
@@ -339,6 +410,19 @@ export default class FlashSaleService {
     if (cached) return cached;
 
     const now    = new Date();
+
+    // Lazily clean up expired flash sales in the background/inline
+    try {
+      const expiredSales = await flashSaleModel
+        .find({ endDate: { $lt: now }, isActive: true })
+        .select("_id products variants combos")
+        .lean();
+      if (expiredSales.length) {
+        await FlashSaleService.deactivateSales(expiredSales);
+      }
+    } catch (err) {
+      console.error("[Lazy Cleanup] getActive failed:", err.message);
+    }
     const filter = {
       isActive:  true,
       startDate: { $lte: now },

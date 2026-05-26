@@ -9,6 +9,7 @@ export const PERMISSION_MAP = {
   // Products
   "/api/v1/create/product": { POST: "products.edit" },
   "/api/v1/product/:id": { PUT: "products.edit", DELETE: "products.edit" },
+  "/api/v1/product/:id/trending": { PATCH: "products.edit" },
   "/api/v1/products/admin": { GET: "products.view" },
   
   // Orders

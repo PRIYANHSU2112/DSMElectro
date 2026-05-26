@@ -3,6 +3,8 @@ import categoryModel from "../model/category.model.js";
 import variantModel from "../model/variant.model.js";
 import productModel from "../model/product.model.js";
 import comboModel from "../model/combo.model.js";
+import flashSaleModel from "../model/flashSale.model.js";
+import FlashSaleService from "./flashSaleServices.js";
 import redisClient from "../config/redis.js";
 
 export default class HomeService {
@@ -19,6 +21,21 @@ export default class HomeService {
     const cached = await redisClient.get(cacheKey);
     if (cached) {
       return JSON.parse(cached);
+    }
+
+    // Lazily clean up expired flash sales in the background
+    try {
+      const expiredSales = await flashSaleModel
+        .find({ endDate: { $lt: new Date() }, isActive: true })
+        .select("_id products variants combos")
+        .lean();
+      if (expiredSales.length) {
+        FlashSaleService.deactivateSales(expiredSales).catch((err) =>
+          console.error("[Lazy Cleanup] getHomePageData failed:", err.message)
+        );
+      }
+    } catch (err) {
+      console.error("[Lazy Cleanup] Home check failed:", err.message);
     }
 
     // Prepare Match Objects
@@ -114,6 +131,57 @@ export default class HomeService {
     ];
     const newArrivalsPromise = productModel.aggregate(newArrivalsPipeline);
 
+    const trendingProductsPipeline = [
+      { $match: { ...productMatch, trending: true } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: "variants",
+          localField: "_id",
+          foreignField: "productId",
+          as: "variants"
+        }
+      },
+      { $match: { variants: { $not: { $size: 0 } } } },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "categoryDoc"
+        }
+      },
+      {
+        $lookup: {
+          from: "subcategories",
+          localField: "subCategoryId",
+          foreignField: "_id",
+          as: "subCategoryDoc"
+        }
+      },
+      {
+        $project: {
+          name: 1,
+          avgRating: 1,
+          totalRatings: 1,
+          icon: 1,
+          images: 1,
+          slug: 1,
+          categoryId: 1,
+          subCategoryId: 1,
+          brandId: 1,
+          variantId: { $arrayElemAt: ["$variants._id", 0] },
+          categoryName: { $arrayElemAt: ["$categoryDoc.title", 0] },
+          subCategoryName: { $arrayElemAt: ["$subCategoryDoc.title", 0] },
+          mrp: { $arrayElemAt: ["$variants.mrp", 0] },
+          price: { $arrayElemAt: ["$variants.finalPrice", 0] },
+          discount: { $arrayElemAt: ["$variants.discount", 0] }
+        }
+      }
+    ];
+    const trendingProductsPromise = productModel.aggregate(trendingProductsPipeline);
+
     const combosPromise = comboModel
       .find(comboMatch)
       .select("name avgRating totalRatings icon images slug comboPrice totalMrp discount")
@@ -184,6 +252,7 @@ export default class HomeService {
       flashSales,
       specialOffers,
       newArrivals,
+      trendingProducts,
       combos,
       productsData,
       productsTotal
@@ -193,6 +262,7 @@ export default class HomeService {
       flashSalePromise,
       specialOffersPromise,
       newArrivalsPromise,
+      trendingProductsPromise,
       combosPromise,
       productsPromise,
       productsTotalPromise
@@ -223,6 +293,7 @@ export default class HomeService {
       flashSales: formatVariantList(flashSales),
       specialOffers: formatVariantList(specialOffers),
       newArrivals,
+      trendingProducts,
       combos,
       products: {
         data: productsData,
